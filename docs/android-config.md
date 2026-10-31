@@ -1,5 +1,7 @@
 # Cấu hình Android (làm một lần sau `flutter create`)
 
+> Đã làm sẵn trong repo (PR "Cấu hình Android"). File này giữ lại để giải thích trong báo cáo.
+
 ## 1. `android/app/src/main/AndroidManifest.xml`
 
 Thêm các dòng **quyền** ngay dưới thẻ `<manifest ...>` (trước `<application`):
