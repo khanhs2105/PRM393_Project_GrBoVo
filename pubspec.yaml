@@ -1,5 +1,5 @@
 name: chia_tien
-description: "GrBoVo Split - app chia tiền nhóm và nhắc nợ (PRM393)."
+description: "Chipin - app chia tiền nhóm và nhắc nợ (PRM393)."
 publish_to: none
 version: 1.0.0+1
 
@@ -31,3 +31,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/banks.json
+    - assets/brand/chipin_logo.png

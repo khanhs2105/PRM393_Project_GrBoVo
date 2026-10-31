@@ -60,7 +60,16 @@ class _HomeScreenState extends State<HomeScreen> {
         final items = snap.data;
         return Scaffold(
           appBar: AppBar(
-            title: const Text('GrBoVo Split'),
+            title: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Image.asset('assets/brand/chipin_logo.png',
+                    width: 30, height: 30),
+                const SizedBox(width: 10),
+                const Text('Chipin',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
+              ],
+            ),
             actions: [
               ValueListenableBuilder<Plan>(
                 valueListenable: App.plan,
