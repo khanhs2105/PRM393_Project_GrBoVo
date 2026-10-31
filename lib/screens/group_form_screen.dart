@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/activity.dart';
 import '../models/group.dart';
 import '../models/member.dart';
 import '../services/app_services.dart';
@@ -36,6 +37,12 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
     if (_isEdit) {
       await App.groups
           .update(widget.group!.copyWith(name: _name.text.trim(), type: _type));
+      await App.activities.log(
+        groupId: widget.group!.id,
+        groupName: _name.text.trim(),
+        kind: ActivityKind.groupEdited,
+        message: 'Sửa thông tin nhóm',
+      );
     } else {
       final names = _memberControllers
           .map((c) => c.text.trim())
@@ -45,9 +52,15 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
         showSnack(context, 'Nhóm cần ít nhất 2 người');
         return;
       }
-      await App.groups.create(
+      final id = await App.groups.create(
         Group(name: _name.text.trim(), type: _type, createdAt: DateTime.now()),
         [for (final n in names) Member(groupId: 0, name: n)],
+      );
+      await App.activities.log(
+        groupId: id,
+        groupName: _name.text.trim(),
+        kind: ActivityKind.groupCreated,
+        message: 'Tạo nhóm với ${names.join(', ')}',
       );
     }
     if (mounted) Navigator.pop(context, true);

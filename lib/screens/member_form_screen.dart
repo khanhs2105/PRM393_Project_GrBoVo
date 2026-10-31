@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../logic/emv_qr_parser.dart';
 import '../logic/vietqr.dart';
+import '../models/activity.dart';
 import '../models/bank.dart';
 import '../models/member.dart';
 import '../services/app_services.dart';
@@ -78,7 +79,21 @@ class _MemberFormScreenState extends State<MemberFormScreen> {
     } else {
       await App.groups.updateMember(m);
     }
+    await _log(
+      _isNew ? ActivityKind.memberAdded : ActivityKind.memberEdited,
+      _isNew ? 'Thêm thành viên ${m.name}' : 'Sửa thông tin ${m.name}',
+    );
     if (mounted) Navigator.pop(context, true);
+  }
+
+  Future<void> _log(String kind, String message) async {
+    final group = await App.groups.getById(widget.member.groupId);
+    await App.activities.log(
+      groupId: widget.member.groupId,
+      groupName: group?.name ?? '',
+      kind: kind,
+      message: message,
+    );
   }
 
   Future<void> _delete() async {
@@ -89,7 +104,9 @@ class _MemberFormScreenState extends State<MemberFormScreen> {
     final deleted = await App.groups.deleteMember(widget.member.id!);
     if (!mounted) return;
     if (deleted) {
-      Navigator.pop(context, true);
+      await _log(ActivityKind.memberDeleted,
+          'Xóa thành viên ${widget.member.name}');
+      if (mounted) Navigator.pop(context, true);
     } else {
       showSnack(context,
           'Không xóa được: người này đã có trong khoản chi hoặc lần trả tiền.');

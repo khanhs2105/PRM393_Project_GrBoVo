@@ -24,8 +24,12 @@ class IconTile extends StatelessWidget {
   final double size;
   const IconTile(this.icon, this.color, {super.key, this.size = 44});
 
-  factory IconTile.category(String title, {double size = 44}) {
-    final (icon, color) = categoryStyle[categorize(title)]!;
+  /// Đoán danh mục từ nội dung.
+  factory IconTile.category(String title, {double size = 44}) =>
+      IconTile.forCategory(categorize(title), size: size);
+
+  factory IconTile.forCategory(ExpenseCategory c, {double size = 44}) {
+    final (icon, color) = categoryStyle[c]!;
     return IconTile(icon, color, size: size);
   }
 

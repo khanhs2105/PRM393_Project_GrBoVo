@@ -66,3 +66,68 @@ bool sharesMatchTotal(int amount, Map<int, int> shares) {
   if (shares.values.any((v) => v < 0)) return false;
   return shares.values.fold<int>(0, (a, b) => a + b) == amount;
 }
+
+/// Chia [amount] theo trọng số: chia theo phần (2:1:1) hoặc theo % (trọng số
+/// là phần vạn, 100% = 10000).
+///
+/// Dùng phương pháp phần dư lớn nhất: mỗi người nhận phần nguyên trước, số
+/// đồng còn dư chia lần lượt cho người có phần lẻ lớn nhất. Nếu bằng nhau thì
+/// ưu tiên [remainderTo] rồi theo thứ tự trong [weights]. Tổng luôn bằng
+/// [amount]. Người có trọng số 0 bị bỏ khỏi kết quả.
+Map<int, int> splitByWeights(Map<int, int> weights, int amount,
+    {int? remainderTo}) {
+  if (amount < 0) throw ArgumentError('Số tiền không được âm');
+  if (weights.values.any((w) => w < 0)) {
+    throw ArgumentError('Trọng số không được âm');
+  }
+  final active = {
+    for (final e in weights.entries)
+      if (e.value > 0) e.key: e.value,
+  };
+  final total = active.values.fold<int>(0, (a, b) => a + b);
+  if (total == 0) throw ArgumentError('Phải có ít nhất 1 người để chia');
+
+  final shares = <int, int>{};
+  final fractions = <int, int>{};
+  var given = 0;
+  active.forEach((id, w) {
+    shares[id] = amount * w ~/ total;
+    fractions[id] = amount * w % total;
+    given += shares[id]!;
+  });
+  // List.sort không ổn định, nên khi bằng nhau thì xét vị trí ban đầu.
+  final position = {for (final (i, id) in active.keys.indexed) id: i};
+  final order = active.keys.toList()..sort((a, b) {
+    final byFraction = fractions[b]!.compareTo(fractions[a]!);
+    if (byFraction != 0) return byFraction;
+    if (a == remainderTo) return -1;
+    if (b == remainderTo) return 1;
+    return position[a]!.compareTo(position[b]!);
+  });
+  var left = amount - given;
+  for (var i = 0; left > 0; i = (i + 1) % order.length, left--) {
+    shares[order[i]] = shares[order[i]]! + 1;
+  }
+  return shares;
+}
+
+/// 100% tính bằng phần vạn.
+const percentScale = 10000;
+
+/// "33.33", "33,33", "50%" -> 3333, 3333, 5000 (phần vạn). Không hợp lệ: null.
+int? parsePercent(String input) {
+  final s = input.trim().replaceAll('%', '').replaceAll(',', '.');
+  if (s.isEmpty) return null;
+  final v = double.tryParse(s);
+  if (v == null || v < 0 || v > 100) return null;
+  return (v * 100).round();
+}
+
+/// 3333 -> "33,33%", 5000 -> "50%".
+String formatPercent(int basisPoints) {
+  final whole = basisPoints ~/ 100;
+  final frac = basisPoints % 100;
+  if (frac == 0) return '$whole%';
+  final f = frac.toString().padLeft(2, '0').replaceAll(RegExp(r'0$'), '');
+  return '$whole,$f%';
+}

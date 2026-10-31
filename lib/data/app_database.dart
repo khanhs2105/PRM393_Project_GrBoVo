@@ -9,7 +9,8 @@ import 'package:sqflite_common/sqlite_api.dart';
 /// Trong unit test dùng databaseFactoryFfi và inMemoryDatabasePath.
 class AppDatabase {
   static const fileName = 'chia_tien.db';
-  static const version = 1;
+  /// 1: bản đầu. 2: danh mục, ghi chú, chia theo phần/%, lịch sử hoạt động.
+  static const version = 2;
 
   static Future<Database> open(DatabaseFactory factory, String path) {
     return factory.openDatabase(
@@ -18,7 +19,13 @@ class AppDatabase {
         version: version,
         // Bật khóa ngoại để xóa nhóm thì xóa luôn thành viên, khoản chi...
         onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
-        onCreate: (db, _) => _create(db),
+        onCreate: (db, _) async {
+          await _create(db);
+          await _upgradeTo2(db);
+        },
+        onUpgrade: (db, oldVersion, _) async {
+          if (oldVersion < 2) await _upgradeTo2(db);
+        },
       ),
     );
   }
@@ -77,6 +84,30 @@ class AppDatabase {
     batch.execute('CREATE INDEX idx_expenses_group ON expenses(group_id)');
     batch.execute(
       'CREATE INDEX idx_settlements_group ON settlements(group_id)',
+    );
+    await batch.commit(noResult: true);
+  }
+
+  /// Thêm cột và bảng mới của bản 2. Chạy cho cả máy cài mới lẫn máy nâng cấp
+  /// nên dữ liệu cũ được giữ nguyên.
+  static Future<void> _upgradeTo2(Database db) async {
+    final batch = db.batch();
+    batch.execute('ALTER TABLE expenses ADD COLUMN category TEXT');
+    batch.execute('ALTER TABLE expenses ADD COLUMN note TEXT');
+    batch.execute('ALTER TABLE expense_shares ADD COLUMN weight INTEGER');
+    batch.execute('ALTER TABLE settlements ADD COLUMN note TEXT');
+    batch.execute('''
+      CREATE TABLE activities (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        group_id INTEGER,
+        group_name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        message TEXT NOT NULL,
+        amount INTEGER,
+        created_at INTEGER NOT NULL
+      )''');
+    batch.execute(
+      'CREATE INDEX idx_activities_group ON activities(group_id, created_at)',
     );
     await batch.commit(noResult: true);
   }

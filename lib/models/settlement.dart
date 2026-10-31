@@ -6,6 +6,7 @@ class Settlement {
   final int toId;
   final int amount;
   final DateTime paidAt;
+  final String? note;
 
   const Settlement({
     this.id,
@@ -14,6 +15,7 @@ class Settlement {
     required this.toId,
     required this.amount,
     required this.paidAt,
+    this.note,
   });
 
   Map<String, Object?> toMap() => {
@@ -23,6 +25,7 @@ class Settlement {
         'to_id': toId,
         'amount': amount,
         'paid_at': paidAt.millisecondsSinceEpoch,
+        'note': note,
       };
 
   factory Settlement.fromMap(Map<String, Object?> m) => Settlement(
@@ -32,6 +35,7 @@ class Settlement {
         toId: m['to_id'] as int,
         amount: m['amount'] as int,
         paidAt: DateTime.fromMillisecondsSinceEpoch(m['paid_at'] as int),
+        note: m['note'] as String?,
       );
 }
 

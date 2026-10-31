@@ -8,6 +8,7 @@ import '../services/app_services.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ui.dart';
+import 'activity_screen.dart';
 import 'group_detail_screen.dart';
 import 'group_form_screen.dart';
 import 'plans_screen.dart';
@@ -71,6 +72,12 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
             actions: [
+              IconButton(
+                tooltip: 'Hoạt động',
+                icon: const Icon(Icons.history_rounded),
+                onPressed: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const ActivityScreen())),
+              ),
               ValueListenableBuilder<Plan>(
                 valueListenable: App.plan,
                 builder: (context, plan, _) => Padding(

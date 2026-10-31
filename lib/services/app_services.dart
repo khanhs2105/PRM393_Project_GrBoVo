@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../data/activity_repository.dart';
 import '../data/app_database.dart';
 import '../data/expense_repository.dart';
 import '../data/group_repository.dart';
@@ -20,6 +21,7 @@ class App {
   static late final ExpenseRepository expenses;
   static late final SettlementRepository settlements;
   static late final SettingsRepository settings;
+  static late final ActivityRepository activities;
   static late final List<Bank> banks;
 
   /// Gói đang dùng. Màn hình nào cần thì lắng nghe bằng ValueListenableBuilder.
@@ -32,6 +34,7 @@ class App {
     expenses = ExpenseRepository(db);
     settlements = SettlementRepository(db);
     settings = SettingsRepository(db);
+    activities = ActivityRepository(db);
     banks = parseBanks(await rootBundle.loadString('assets/banks.json'));
     plan.value = await settings.currentPlan();
     await seedIfEmpty(db);
