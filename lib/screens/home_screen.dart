@@ -5,7 +5,9 @@ import '../logic/money.dart';
 import '../logic/plans.dart';
 import '../models/group.dart';
 import '../services/app_services.dart';
+import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ui.dart';
 import 'group_detail_screen.dart';
 import 'group_form_screen.dart';
 import 'plans_screen.dart';
@@ -44,93 +46,191 @@ class _HomeScreenState extends State<HomeScreen> {
     if (created == true) _reload();
   }
 
+  Future<void> _openGroup(Group g) async {
+    await Navigator.push(context,
+        MaterialPageRoute(builder: (_) => GroupDetailScreen(groupId: g.id!)));
+    _reload();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('GrBoVo Split'),
-        actions: [
-          ValueListenableBuilder<Plan>(
-            valueListenable: App.plan,
-            builder: (context, plan, _) => Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ActionChip(
-                avatar: const Icon(Icons.workspace_premium_outlined, size: 18),
-                label: Text(plan.title),
-                onPressed: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const PlansScreen())),
+    return FutureBuilder<List<(Group, GroupSummary)>>(
+      future: _future,
+      builder: (context, snap) {
+        final items = snap.data;
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('GrBoVo Split'),
+            actions: [
+              ValueListenableBuilder<Plan>(
+                valueListenable: App.plan,
+                builder: (context, plan, _) => Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: ActionChip(
+                    avatar: const Icon(Icons.workspace_premium, size: 18),
+                    label: Text(plan.title),
+                    onPressed: () => Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => const PlansScreen())),
+                  ),
+                ),
               ),
-            ),
+            ],
+          ),
+          body: snap.hasError
+              ? Center(child: Text('Lỗi: ${snap.error}'))
+              : items == null
+                  ? const Center(child: CircularProgressIndicator())
+                  : items.isEmpty
+                      ? EmptyState(
+                          icon: Icons.groups_rounded,
+                          title: 'Chưa có nhóm nào',
+                          message:
+                              'Tạo nhóm cho phòng trọ, buổi đi ăn hay chuyến du lịch để bắt đầu chia tiền.',
+                          actionLabel: 'Tạo nhóm đầu tiên',
+                          onAction: () => _createGroup(0),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: () async => _reload(),
+                          child: ListView(
+                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
+                            children: [
+                              _SummaryCard(items: items),
+                              const SectionHeader('Nhóm của bạn'),
+                              for (final (g, s) in items)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: _GroupCard(
+                                      group: g,
+                                      summary: s,
+                                      onTap: () => _openGroup(g)),
+                                ),
+                            ],
+                          ),
+                        ),
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () => _createGroup(items?.length ?? 0),
+            icon: const Icon(Icons.add),
+            label: const Text('Tạo nhóm'),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SummaryCard extends StatelessWidget {
+  final List<(Group, GroupSummary)> items;
+  const _SummaryCard({required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    final total = items.fold<int>(0, (sum, e) => sum + e.$2.totalSpent);
+    final pending = items.fold<int>(0, (sum, e) => sum + e.$2.transfers.length);
+    final open = items.where((e) => e.$2.transfers.isNotEmpty).length;
+    const white = Colors.white;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1CC29F), Color(0xFF0E8F74)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.seed.withValues(alpha: 0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
-      body: FutureBuilder<List<(Group, GroupSummary)>>(
-        future: _future,
-        builder: (context, snap) {
-          if (snap.hasError) {
-            return Center(child: Text('Lỗi: ${snap.error}'));
-          }
-          if (!snap.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final items = snap.data!;
-          if (items.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(32),
-                child: Text(
-                  'Chưa có nhóm nào.\nBấm "Tạo nhóm" để bắt đầu chia tiền.',
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            );
-          }
-          return RefreshIndicator(
-            onRefresh: () async => _reload(),
-            child: ListView.separated(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-              itemCount: items.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (context, i) {
-                final (group, summary) = items[i];
-                final pending = summary.transfers.length;
-                return Card(
-                  clipBehavior: Clip.antiAlias,
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
-                    leading: CircleAvatar(child: Icon(groupTypeIcon(group.type))),
-                    title: Text(group.name,
-                        style: const TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: Text(
-                      '${summary.members.length} người · '
-                      'đã chi ${formatVnd(summary.totalSpent)}\n'
-                      '${pending == 0 ? 'Không ai nợ ai 🎉' : '$pending khoản cần thanh toán'}',
-                    ),
-                    isThreeLine: true,
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () async {
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) =>
-                                GroupDetailScreen(groupId: group.id!)),
-                      );
-                      _reload();
-                    },
-                  ),
-                );
-              },
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Tổng chi tiêu các nhóm',
+            style: TextStyle(color: white.withValues(alpha: 0.85))),
+        const SizedBox(height: 6),
+        Text(formatVnd(total),
+            style: const TextStyle(
+                color: white, fontSize: 30, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 16),
+        Row(children: [
+          _Stat(label: 'Nhóm', value: '${items.length}'),
+          _Stat(label: 'Nhóm còn nợ', value: '$open'),
+          _Stat(label: 'Lượt cần trả', value: '$pending'),
+        ]),
+      ]),
+    );
+  }
+}
+
+class _Stat extends StatelessWidget {
+  final String label;
+  final String value;
+  const _Stat({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(value,
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w700)),
+        Text(label,
+            style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.8), fontSize: 12)),
+      ]),
+    );
+  }
+}
+
+class _GroupCard extends StatelessWidget {
+  final Group group;
+  final GroupSummary summary;
+  final VoidCallback onTap;
+  const _GroupCard(
+      {required this.group, required this.summary, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final pending = summary.transfers.length;
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(children: [
+            IconTile(groupTypeIcon(group.type), groupTypeColor(group.type),
+                size: 52),
+            const SizedBox(width: 14),
+            Expanded(
+              child:
+                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(group.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 2),
+                Text(
+                    '${groupTypeLabel(group.type)} · ${summary.expenses.length} khoản chi',
+                    style: TextStyle(color: muted, fontSize: 13)),
+                const SizedBox(height: 8),
+                AvatarStack(summary.members.map((m) => m.name).toList()),
+              ]),
             ),
-          );
-        },
-      ),
-      floatingActionButton: FutureBuilder<List<(Group, GroupSummary)>>(
-        future: _future,
-        builder: (context, snap) => FloatingActionButton.extended(
-          onPressed: () => _createGroup(snap.data?.length ?? 0),
-          icon: const Icon(Icons.group_add),
-          label: const Text('Tạo nhóm'),
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Text(formatVnd(summary.totalSpent),
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              pending == 0
+                  ? const StatusPill('Đã xong', AppTheme.owed)
+                  : StatusPill('Còn $pending lượt', AppTheme.owe),
+            ]),
+          ]),
         ),
       ),
     );

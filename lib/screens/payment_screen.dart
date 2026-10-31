@@ -168,27 +168,41 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
     final to = _to!;
     final bank = findBankByBin(App.banks, to.bankBin);
-    final text = Theme.of(context).textTheme;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Thanh toán')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Column(children: [MemberAvatar(_from!.name, radius: 26), Text(_from!.name)]),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Icon(Icons.arrow_forward, size: 32),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF1CC29F), Color(0xFF0E8F74)],
+              ),
             ),
-            Column(children: [MemberAvatar(to.name, radius: 26), Text(to.name)]),
-          ]),
-          const SizedBox(height: 12),
-          Center(
-            child: Text(formatVnd(t.amount),
-                style: text.headlineMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.bold)),
+            child: Column(children: [
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                _Person(_from!.name),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  child: Icon(Icons.arrow_forward_rounded,
+                      color: Colors.white, size: 28),
+                ),
+                _Person(to.name),
+              ]),
+              const SizedBox(height: 12),
+              Text(formatVnd(t.amount),
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 32,
+                      fontWeight: FontWeight.w800)),
+              Text(widget.group.name,
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.85))),
+            ]),
           ),
           const SizedBox(height: 16),
           if (!to.hasBank)
@@ -216,7 +230,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
             Card(
               clipBehavior: Clip.antiAlias,
               color: Colors.white,
-              child: AspectRatio(
+              child: Padding(
+               padding: const EdgeInsets.all(12),
+               child: AspectRatio(
                 aspectRatio: 1,
                 child: Image.network(
                   _qrUrl,
@@ -235,6 +251,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     ),
                   ),
                 ),
+               ),
               ),
             ),
             const SizedBox(height: 8),
@@ -300,5 +317,26 @@ class _PaymentScreenState extends State<PaymentScreen> {
         ),
       ),
     );
+  }
+}
+
+class _Person extends StatelessWidget {
+  final String name;
+  const _Person(this.name);
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(children: [
+      Container(
+        padding: const EdgeInsets.all(2),
+        decoration:
+            const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+        child: MemberAvatar(name, radius: 26),
+      ),
+      const SizedBox(height: 6),
+      Text(name,
+          style: const TextStyle(
+              color: Colors.white, fontWeight: FontWeight.w600)),
+    ]);
   }
 }
