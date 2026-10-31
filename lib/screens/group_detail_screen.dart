@@ -11,8 +11,10 @@ import '../models/group.dart';
 import '../models/member.dart';
 import '../models/settlement.dart';
 import '../services/app_services.dart';
+import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/shake_picker.dart';
+import '../widgets/ui.dart';
 import 'expense_form_screen.dart';
 import 'group_form_screen.dart';
 import 'member_form_screen.dart';
@@ -91,36 +93,57 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                   ],
                 ),
               ],
-              bottom: const TabBar(tabs: [
-                Tab(text: 'Khoản chi'),
-                Tab(text: 'Số dư'),
-                Tab(text: 'Thành viên'),
-              ]),
             ),
-            body: TabBarView(children: [
-              _ExpensesTab(
-                summary: s,
-                onOpen: (e) =>
-                    _open(ExpenseFormScreen(groupId: group.id!, expense: e)),
+            body: Column(children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: _GroupHeader(group: group, summary: s),
               ),
-              _BalancesTab(
-                group: group,
-                summary: s,
-                onPay: (t) => _open(PaymentScreen(group: group, transfer: t)),
-                onUndo: (settlement) async {
-                  final ok = await confirm(context, 'Hoàn tác?',
-                      'Xóa lần trả ${formatVnd(settlement.amount)} này khỏi lịch sử.',
-                      ok: 'Xóa');
-                  if (!ok) return;
-                  await App.settlements.delete(settlement.id!);
-                  _reload();
-                },
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .surfaceContainerHighest
+                        .withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const TabBar(tabs: [
+                    Tab(text: 'Khoản chi', height: 40),
+                    Tab(text: 'Số dư', height: 40),
+                    Tab(text: 'Thành viên', height: 40),
+                  ]),
+                ),
               ),
-              _MembersTab(
-                summary: s,
-                onOpen: (m) => _open(MemberFormScreen(member: m)),
-                onAdd: () => _open(
-                    MemberFormScreen(member: Member(groupId: group.id!, name: ''))),
+              Expanded(
+                child: TabBarView(children: [
+                  _ExpensesTab(
+                    summary: s,
+                    onOpen: (e) =>
+                        _open(ExpenseFormScreen(groupId: group.id!, expense: e)),
+                    onAdd: () => _open(ExpenseFormScreen(groupId: group.id!)),
+                  ),
+                  _BalancesTab(
+                    summary: s,
+                    onPay: (t) => _open(PaymentScreen(group: group, transfer: t)),
+                    onUndo: (settlement) async {
+                      final ok = await confirm(context, 'Hoàn tác?',
+                          'Xóa lần trả ${formatVnd(settlement.amount)} này khỏi lịch sử.',
+                          ok: 'Xóa');
+                      if (!ok) return;
+                      await App.settlements.delete(settlement.id!);
+                      _reload();
+                    },
+                  ),
+                  _MembersTab(
+                    summary: s,
+                    onOpen: (m) => _open(MemberFormScreen(member: m)),
+                    onAdd: () => _open(MemberFormScreen(
+                        member: Member(groupId: group.id!, name: ''))),
+                  ),
+                ]),
               ),
             ]),
             floatingActionButton: FloatingActionButton.extended(
@@ -135,53 +158,112 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
   }
 }
 
+class _GroupHeader extends StatelessWidget {
+  final Group group;
+  final GroupSummary summary;
+  const _GroupHeader({required this.group, required this.summary});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = summary;
+    final perPerson = s.members.isEmpty ? 0 : s.totalSpent ~/ s.members.length;
+    final color = groupTypeColor(group.type);
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(children: [
+          IconTile(groupTypeIcon(group.type), color, size: 52),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Tổng chi', style: TextStyle(color: muted, fontSize: 13)),
+              Text(formatVnd(s.totalSpent),
+                  style: const TextStyle(
+                      fontSize: 22, fontWeight: FontWeight.w800)),
+              Text('Trung bình ${formatVnd(perPerson)}/người',
+                  style: TextStyle(color: muted, fontSize: 13)),
+            ]),
+          ),
+          AvatarStack(s.members.map((m) => m.name).toList(), max: 3),
+        ]),
+      ),
+    );
+  }
+}
+
 class _ExpensesTab extends StatelessWidget {
   final GroupSummary summary;
   final void Function(Expense) onOpen;
-  const _ExpensesTab({required this.summary, required this.onOpen});
+  final VoidCallback onAdd;
+  const _ExpensesTab(
+      {required this.summary, required this.onOpen, required this.onAdd});
 
   @override
   Widget build(BuildContext context) {
     final s = summary;
     if (s.expenses.isEmpty) {
-      return const Center(child: Text('Chưa có khoản chi nào'));
+      return EmptyState(
+        icon: Icons.receipt_long,
+        title: 'Chưa có khoản chi',
+        message: 'Thêm bữa ăn, tiền phòng hay tiền điện đầu tiên của nhóm.',
+        actionLabel: 'Thêm khoản chi',
+        onAction: onAdd,
+      );
     }
+    // Gom khoản chi theo ngày, danh sách đã sắp mới nhất trước.
+    final byDay = <String, List<Expense>>{};
+    for (final e in s.expenses) {
+      byDay.putIfAbsent(dayLabel(e.date), () => []).add(e);
+    }
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     return ListView(
-      padding: const EdgeInsets.only(bottom: 96),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
       children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Text('Tổng đã chi: ${formatVnd(s.totalSpent)}',
-              style: Theme.of(context).textTheme.titleMedium),
-        ),
-        for (final e in s.expenses)
-          ListTile(
-            leading: e.receiptPath != null && File(e.receiptPath!).existsSync()
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.file(File(e.receiptPath!),
-                        width: 44, height: 44, fit: BoxFit.cover),
-                  )
-                : const CircleAvatar(child: Icon(Icons.receipt_long)),
-            title: Text(e.title),
-            subtitle: Text('${s.memberById(e.paidBy).name} trả · '
-                'chia ${e.shares.length} người · ${formatDate(e.date)}'),
-            trailing: Text(formatVnd(e.amount),
-                style: const TextStyle(fontWeight: FontWeight.w600)),
-            onTap: () => onOpen(e),
+        for (final entry in byDay.entries) ...[
+          SectionHeader(entry.key,
+              trailing: Text(
+                  formatVnd(entry.value.fold(0, (sum, e) => sum + e.amount)),
+                  style: TextStyle(color: muted, fontSize: 12))),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: Column(children: [
+              for (final (i, e) in entry.value.indexed) ...[
+                if (i > 0) const Divider(height: 1, indent: 72),
+                ListTile(
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  leading: e.receiptPath != null &&
+                          File(e.receiptPath!).existsSync()
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(13),
+                          child: Image.file(File(e.receiptPath!),
+                              width: 44, height: 44, fit: BoxFit.cover),
+                        )
+                      : IconTile.category(e.title),
+                  title: Text(e.title,
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text(
+                      '${s.memberById(e.paidBy).name} đã trả · chia ${e.shares.length} người'),
+                  trailing: Text(formatVnd(e.amount),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 15)),
+                  onTap: () => onOpen(e),
+                ),
+              ],
+            ]),
           ),
+        ],
       ],
     );
   }
 }
 
 class _BalancesTab extends StatelessWidget {
-  final Group group;
   final GroupSummary summary;
   final void Function(Transfer) onPay;
   final void Function(Settlement) onUndo;
   const _BalancesTab({
-    required this.group,
     required this.summary,
     required this.onPay,
     required this.onUndo,
@@ -190,83 +272,177 @@ class _BalancesTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = summary;
-    final text = Theme.of(context).textTheme;
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final maxAbs = s.balances.values
+        .fold<int>(0, (m, v) => v.abs() > m ? v.abs() : m);
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
       children: [
-        Text('Cần thanh toán', style: text.titleMedium),
-        const SizedBox(height: 4),
-        Text(
-          'Đã rút gọn: ${s.members.length} người chỉ cần '
-          '${s.transfers.length} lượt chuyển.',
-          style: text.bodySmall,
-        ),
-        const SizedBox(height: 8),
+        SectionHeader('Cần thanh toán',
+            trailing: Text('${s.transfers.length} lượt',
+                style: TextStyle(color: muted, fontSize: 12))),
         if (s.transfers.isEmpty)
           const Card(
-            child: ListTile(
-              leading: Text('🎉', style: TextStyle(fontSize: 28)),
-              title: Text('Không ai nợ ai'),
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Row(children: [
+                Text('🎉', style: TextStyle(fontSize: 32)),
+                SizedBox(width: 16),
+                Expanded(
+                  child: Text('Không ai nợ ai. Nhóm đã sòng phẳng!',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
+                ),
+              ]),
             ),
           ),
         for (final t in s.transfers)
-          Card(
-            child: ListTile(
-              leading: MemberAvatar(s.memberById(t.fromId).name),
-              title: Text(
-                  '${s.memberById(t.fromId).name} → ${s.memberById(t.toId).name}'),
-              subtitle: Text(formatVnd(t.amount),
-                  style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.w600)),
-              trailing: FilledButton.tonalIcon(
-                onPressed: () => onPay(t),
-                icon: const Icon(Icons.qr_code_2),
-                label: const Text('Trả'),
-              ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _TransferCard(
+              from: s.memberById(t.fromId),
+              to: s.memberById(t.toId),
+              amount: t.amount,
+              onPay: () => onPay(t),
             ),
           ),
-        const SizedBox(height: 24),
-        Text('Số dư từng người', style: text.titleMedium),
-        const SizedBox(height: 8),
+        if (s.transfers.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: Text(
+              'Đã rút gọn: ${s.members.length} người chỉ cần ${s.transfers.length} lượt chuyển.',
+              style: TextStyle(color: muted, fontSize: 12),
+            ),
+          ),
+        const SectionHeader('Số dư từng người'),
         Card(
-          child: Column(children: [
-            for (final m in s.members)
-              ListTile(
-                leading: MemberAvatar(m.name),
-                title: Text(m.name),
-                subtitle: Text(_balanceLabel(s.balances[m.id] ?? 0)),
-                trailing: Text(
-                  formatVnd(s.balances[m.id] ?? 0),
-                  style: TextStyle(
-                    color: balanceColor(context, s.balances[m.id] ?? 0),
-                    fontWeight: FontWeight.w600,
-                  ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(children: [
+              for (final m in s.members)
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(children: [
+                    MemberAvatar(m.name),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(m.name,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 6),
+                            _BalanceBar(
+                                value: s.balances[m.id] ?? 0, max: maxAbs),
+                          ]),
+                    ),
+                    const SizedBox(width: 12),
+                    SignedAmount(s.balances[m.id] ?? 0),
+                  ]),
                 ),
-              ),
-          ]),
+            ]),
+          ),
         ),
         if (s.settlements.isNotEmpty) ...[
-          const SizedBox(height: 24),
-          Text('Lịch sử thanh toán', style: text.titleMedium),
-          Text('Nhấn giữ để hoàn tác nếu bấm nhầm.', style: text.bodySmall),
-          const SizedBox(height: 8),
-          for (final st in s.settlements)
-            ListTile(
-              leading: const Icon(Icons.check_circle, color: Colors.green),
-              title: Text(
-                  '${s.memberById(st.fromId).name} đã trả ${s.memberById(st.toId).name}'),
-              subtitle: Text(formatDateTime(st.paidAt)),
-              trailing: Text(formatVnd(st.amount)),
-              onLongPress: () => onUndo(st),
-            ),
+          SectionHeader('Lịch sử thanh toán',
+              trailing: Text('Nhấn giữ để hoàn tác',
+                  style: TextStyle(color: muted, fontSize: 11))),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: Column(children: [
+              for (final st in s.settlements)
+                ListTile(
+                  leading: const IconTile(
+                      Icons.check_rounded, AppTheme.owed, size: 40),
+                  title: Text(
+                      '${s.memberById(st.fromId).name} → ${s.memberById(st.toId).name}'),
+                  subtitle: Text(formatDateTime(st.paidAt)),
+                  trailing: Text(formatVnd(st.amount),
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                  onLongPress: () => onUndo(st),
+                ),
+            ]),
+          ),
         ],
       ],
     );
   }
+}
 
-  String _balanceLabel(int v) =>
-      v > 0 ? 'Được nợ' : (v < 0 ? 'Đang nợ' : 'Đã xong');
+class _TransferCard extends StatelessWidget {
+  final Member from;
+  final Member to;
+  final int amount;
+  final VoidCallback onPay;
+  const _TransferCard({
+    required this.from,
+    required this.to,
+    required this.amount,
+    required this.onPay,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(children: [
+          MemberAvatar(from.name, radius: 20),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Icon(Icons.arrow_forward_rounded,
+                size: 18, color: scheme.onSurfaceVariant),
+          ),
+          MemberAvatar(to.name, radius: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('${from.name} trả ${to.name}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13)),
+              Text(formatVnd(amount),
+                  style: const TextStyle(
+                      fontSize: 17, fontWeight: FontWeight.w800)),
+            ]),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(0, 40),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+            ),
+            onPressed: onPay,
+            icon: const Icon(Icons.qr_code_2, size: 18),
+            label: const Text('Trả'),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Thanh ngang thể hiện độ lớn số dư so với người lớn nhất.
+class _BalanceBar extends StatelessWidget {
+  final int value;
+  final int max;
+  const _BalanceBar({required this.value, required this.max});
+
+  @override
+  Widget build(BuildContext context) {
+    final ratio = max == 0 ? 0.0 : value.abs() / max;
+    final color = value >= 0 ? AppTheme.owed : AppTheme.owe;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(4),
+      child: LinearProgressIndicator(
+        value: ratio,
+        minHeight: 6,
+        color: color,
+        backgroundColor: color.withValues(alpha: 0.12),
+      ),
+    );
+  }
 }
 
 class _MembersTab extends StatelessWidget {
@@ -279,28 +455,36 @@ class _MembersTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.only(bottom: 96),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
       children: [
-        for (final m in summary.members)
-          ListTile(
-            leading: MemberAvatar(m.name),
-            title: Text(m.name),
-            subtitle: Text(m.hasBank
-                ? '${findBankName(m.bankBin)} · ${m.accountNo}'
-                : 'Chưa có tài khoản ngân hàng'),
-            trailing: Icon(
-              m.hasBank ? Icons.account_balance : Icons.warning_amber,
-              color: m.hasBank ? null : Colors.orange,
-            ),
-            onTap: () => onOpen(m),
-          ),
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: OutlinedButton.icon(
-            onPressed: onAdd,
-            icon: const Icon(Icons.person_add_alt),
-            label: const Text('Thêm thành viên'),
-          ),
+        const SectionHeader('Thành viên'),
+        Card(
+          clipBehavior: Clip.antiAlias,
+          child: Column(children: [
+            for (final (i, m) in summary.members.indexed) ...[
+              if (i > 0) const Divider(height: 1, indent: 72),
+              ListTile(
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                leading: MemberAvatar(m.name, radius: 22),
+                title: Text(m.name,
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text(m.hasBank
+                    ? '${findBankName(m.bankBin)} · ${m.accountNo}'
+                    : 'Chưa có tài khoản nhận tiền'),
+                trailing: m.hasBank
+                    ? const Icon(Icons.verified_rounded, color: AppTheme.owed)
+                    : const StatusPill('Thêm TK', Colors.orange),
+                onTap: () => onOpen(m),
+              ),
+            ],
+          ]),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: onAdd,
+          icon: const Icon(Icons.person_add_alt_1),
+          label: const Text('Thêm thành viên'),
         ),
       ],
     );

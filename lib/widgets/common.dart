@@ -1,14 +1,24 @@
 import 'package:flutter/material.dart';
 
 const groupTypes = {
-  'meal': ('Đi ăn', Icons.restaurant),
-  'room': ('Phòng trọ', Icons.home_outlined),
-  'trip': ('Du lịch', Icons.flight_takeoff),
-  'other': ('Khác', Icons.groups_outlined),
+  'meal': ('Đi ăn', Icons.restaurant_rounded),
+  'room': ('Phòng trọ', Icons.home_rounded),
+  'trip': ('Du lịch', Icons.flight_takeoff_rounded),
+  'other': ('Khác', Icons.groups_rounded),
 };
 
 String groupTypeLabel(String type) => (groupTypes[type] ?? groupTypes['other']!).$1;
 IconData groupTypeIcon(String type) => (groupTypes[type] ?? groupTypes['other']!).$2;
+
+const groupTypeColors = {
+  'meal': Color(0xFFFF8A3D),
+  'room': Color(0xFF5C6BC0),
+  'trip': Color(0xFF29B6F6),
+  'other': Color(0xFF78909C),
+};
+
+Color groupTypeColor(String type) =>
+    groupTypeColors[type] ?? groupTypeColors['other']!;
 
 /// 05/11/2026
 String formatDate(DateTime d) =>
