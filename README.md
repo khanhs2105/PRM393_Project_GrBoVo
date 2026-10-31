@@ -18,16 +18,14 @@ Module phần cứng dùng: camera, cảm biến gia tốc, rung, thông báo, b
 
 ## Chạy lần đầu
 
+Thư mục `android/` đã có trong repo, chỉ cần:
+
 ```bash
-# trong thư mục repo
-flutter create --project-name chia_tien --org com.grbovo --platforms android .
 flutter pub get
 ```
 
-`flutter create` chỉ tạo thêm thư mục `android/` và các file còn thiếu, không ghi đè code trong `lib/`.
-
-Sau đó làm theo [docs/android-config.md](docs/android-config.md) (thêm quyền vào AndroidManifest
-và bật desugaring), rồi:
+Cấu hình Android (quyền, desugaring) đã có sẵn trong repo, giải thích ở
+[docs/android-config.md](docs/android-config.md). Sau đó:
 
 ```bash
 flutter test          # 37 unit test
