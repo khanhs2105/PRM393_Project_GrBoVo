@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 import '../logic/money.dart';
 import '../logic/plans.dart';
@@ -98,11 +97,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
       }
       return;
     }
-    if (source == ImageSource.camera &&
-        !(await Permission.camera.request()).isGranted) {
-      if (mounted) showSnack(context, 'Cần quyền camera để chụp hóa đơn');
-      return;
-    }
+    // image_picker tự xin quyền camera khi cần.
     final picked = await ImagePicker()
         .pickImage(source: source, maxWidth: 1600, imageQuality: 80);
     if (picked == null) return;

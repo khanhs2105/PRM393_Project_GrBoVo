@@ -6,8 +6,7 @@ plugins {
 
 android {
     namespace = "com.grbovo.chia_tien"
-    // permission_handler_android cần compileSdk 37 trở lên
-    compileSdk = maxOf(flutter.compileSdkVersion, 37)
+    compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
