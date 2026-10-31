@@ -1,4 +1,6 @@
-# GrBoVo Split: app chia tiền nhóm và nhắc nợ
+# Chipin: app chia tiền nhóm và nhắc nợ
+
+<img src="assets/brand/chipin_logo.png" width="120" alt="Chipin">
 
 Đồ án PRM393 (Flutter, Android). Ghi lại khoản chi của nhóm (đi ăn, phòng trọ, du lịch),
 tự tính ai nợ ai, rút gọn thành ít lượt chuyển nhất, hiện QR VietQR để trả, và nhắc nợ.
