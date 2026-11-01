@@ -1,4 +1,4 @@
-# Cài đặt Firebase cho Chipin (đăng nhập, đăng ký, lưu dữ liệu, JWT)
+# Cài đặt Firebase cho app Alo, Trả Tiền! (đăng nhập, đăng ký, lưu dữ liệu, JWT)
 
 Code đã viết xong. Bạn chỉ cần tạo project Firebase và tải **1 file** `google-services.json`
 về đặt vào repo. Mất khoảng 10 phút.

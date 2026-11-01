@@ -9,7 +9,7 @@
         android:maxSdkVersion="28" />
 
     <application
-        android:label="Chipin"
+        android:label="Alo, Trả Tiền!"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

@@ -103,7 +103,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
                               color: scheme.onSurfaceVariant)),
-                      const Text('Chipin',
+                      const Text('Alo, Trả Tiền!',
                           style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.w800,

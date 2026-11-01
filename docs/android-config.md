@@ -18,7 +18,7 @@ Thêm các dòng **quyền** ngay dưới thẻ `<manifest ...>` (trước `<app
 ```
 
 Đổi tên app hiển thị: trong thẻ `<application`, sửa `android:label="chia_tien"` thành
-`android:label="Chipin"`.
+`android:label="Alo, Trả Tiền!"`.
 
 Thêm 2 receiver cho thông báo hẹn giờ, đặt **bên trong** `<application>`, ngay trước `</application>`:
 
