@@ -1,0 +1,32 @@
+rules_version = '2';
+
+// Luật bảo mật Cloud Firestore cho Chipin.
+// Dán nội dung file này vào Firebase Console > Firestore Database > Rules > Publish.
+//
+// request.auth chỉ có giá trị khi app gửi kèm một ID token (JWT) hợp lệ:
+// server của Firebase kiểm chữ ký RS256, hạn dùng (exp), aud và iss của token
+// rồi mới điền request.auth.uid. Không có token hoặc token giả thì bị từ chối.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Hồ sơ người dùng: chỉ chính chủ đọc/ghi.
+    match /users/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null
+        && request.auth.uid == uid
+        && (!('email' in request.resource.data)
+            || request.resource.data.email == request.auth.token.email);
+      allow delete: if false;
+
+      // Bản sao lưu dữ liệu nhóm.
+      match /backups/{backupId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+
+    // Mọi thứ khác: chặn.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
