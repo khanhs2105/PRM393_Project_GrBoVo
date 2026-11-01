@@ -50,6 +50,9 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   /// Ô nhập % từng người (kiểu theo %).
   final Map<int, TextEditingController> _percent = {};
 
+  /// Người đã tự gõ %. Phần còn lại tự chia đều cho những người khác.
+  final Set<int> _percentLocked = {};
+
   /// Số phần của từng người (kiểu theo phần).
   final Map<int, int> _parts = {};
 
@@ -166,14 +169,38 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     return null;
   }
 
-  /// Chia đều 100% cho những người đang chọn.
+  /// Chia đều 100% cho những người đang chọn (bỏ hết số đã tự gõ).
   void _fillEqualPercent() {
-    if (_selected.isEmpty) return;
+    _percentLocked.clear();
+    _rebalancePercent();
+  }
+
+  /// Giữ nguyên % người dùng đã tự gõ, phần còn lại của 100% chia đều cho
+  /// những người chưa gõ. Ví dụ 3 người, gõ A = 50% thì B, C tự thành 25%.
+  void _rebalancePercent() {
     final ids = _members.map((m) => m.id!).where(_selected.contains).toList();
-    final each = splitEqual(percentScale, ids, remainderTo: ids.first);
-    for (final id in ids) {
-      _percent[id]!.text = formatPercent(each[id]!).replaceAll('%', '');
+    _percentLocked.removeWhere((id) => !_selected.contains(id));
+    final others = ids.where((id) => !_percentLocked.contains(id)).toList();
+    if (others.isEmpty) return;
+    final result = rebalancePercent(
+      locked: {
+        for (final id in _percentLocked) id: parsePercent(_percent[id]!.text) ?? 0,
+      },
+      others: others,
+    );
+    for (final id in others) {
+      _percent[id]!.text = formatPercent(result[id]!).replaceAll('%', '');
     }
+  }
+
+  void _onPercentTyped(int id) {
+    _percentLocked.add(id);
+    _rebalancePercent();
+  }
+
+  /// Đổi người tham gia thì chia lại % (nếu đang chia theo %).
+  void _afterSelectionChanged() {
+    if (_splitType == SplitType.percent) _rebalancePercent();
   }
 
   // ---------- Hành động ----------
@@ -323,8 +350,10 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
       child: Row(children: [
         Checkbox(
           value: selected,
-          onChanged: (v) =>
-              setState(() => v! ? _selected.add(id) : _selected.remove(id)),
+          onChanged: (v) {
+            setState(() => v! ? _selected.add(id) : _selected.remove(id));
+            _afterSelectionChanged();
+          },
         ),
         MemberAvatar(m.name, radius: 14),
         const SizedBox(width: 8),
@@ -464,6 +493,9 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                     child: TextField(
                       controller: _percent[m.id],
                       enabled: _selected.contains(m.id),
+                      // onChanged chỉ chạy khi người dùng gõ, không chạy khi
+                      // app tự điền nên không bị lặp.
+                      onChanged: (_) => _onPercentTyped(m.id!),
                       textAlign: TextAlign.end,
                       keyboardType:
                           const TextInputType.numberWithOptions(decimal: true),
@@ -595,10 +627,12 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
             ]),
             SectionHeader('Chia cho ai?',
                 trailing: TextButton(
-                  onPressed: () => setState(() =>
-                      _selected.length == _members.length
-                          ? _selected.clear()
-                          : _selected.addAll(_members.map((m) => m.id!))),
+                  onPressed: () {
+                    setState(() => _selected.length == _members.length
+                        ? _selected.clear()
+                        : _selected.addAll(_members.map((m) => m.id!)));
+                    _afterSelectionChanged();
+                  },
                   child: Text(_selected.length == _members.length
                       ? 'Bỏ chọn hết'
                       : 'Chọn tất cả'),
