@@ -103,4 +103,26 @@ void main() {
     expect(formatPercent(3330), '33,3%');
     expect(formatPercent(1205), '12,05%');
   });
+
+  group('rebalancePercent', () {
+    test('3 người, gõ 1 người 50% thì 2 người kia mỗi người 25%', () {
+      expect(rebalancePercent(locked: {1: 5000}, others: [2, 3]),
+          {1: 5000, 2: 2500, 3: 2500});
+    });
+    test('tổng luôn 100% khi chưa vượt', () {
+      final r = rebalancePercent(locked: {1: 1000}, others: [2, 3, 4]);
+      expect(r.values.reduce((a, b) => a + b), percentScale);
+      expect(r, {1: 1000, 2: 3000, 3: 3000, 4: 3000});
+      final odd = rebalancePercent(locked: {}, others: [1, 2, 3]);
+      expect(odd, {1: 3334, 2: 3333, 3: 3333});
+    });
+    test('đã gõ vượt 100% thì người còn lại 0%', () {
+      expect(rebalancePercent(locked: {1: 7000, 2: 4000}, others: [3]),
+          {1: 7000, 2: 4000, 3: 0});
+    });
+    test('không còn ai để chia thì giữ nguyên', () {
+      expect(rebalancePercent(locked: {1: 5000, 2: 5000}, others: []),
+          {1: 5000, 2: 5000});
+    });
+  });
 }
