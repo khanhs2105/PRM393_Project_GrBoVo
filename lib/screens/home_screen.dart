@@ -6,10 +6,10 @@ import '../logic/plans.dart';
 import '../models/group.dart';
 import '../services/app_services.dart';
 import '../theme.dart';
+import '../widgets/app_icons.dart';
 import '../widgets/common.dart';
 import '../widgets/ui.dart';
 import 'account_screen.dart';
-import 'activity_screen.dart';
 import 'group_detail_screen.dart';
 import 'group_form_screen.dart';
 import 'plans_screen.dart';
@@ -23,6 +23,9 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late Future<List<(Group, GroupSummary)>> _future = _load();
+
+  /// 0: tất cả, 1: còn nợ, 2: đã xong.
+  int _filter = 0;
 
   Future<List<(Group, GroupSummary)>> _load() async {
     final groups = await App.groups.getAll();
@@ -69,46 +72,52 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return FutureBuilder<List<(Group, GroupSummary)>>(
       future: _future,
       builder: (context, snap) {
         final items = snap.data;
+        final shown = items == null
+            ? const <(Group, GroupSummary)>[]
+            : [
+                for (final e in items)
+                  if (_filter == 0 ||
+                      (_filter == 1 && e.$2.transfers.isNotEmpty) ||
+                      (_filter == 2 && e.$2.transfers.isEmpty))
+                    e,
+              ];
         return Scaffold(
           appBar: AppBar(
-            title: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Image.asset('assets/brand/chipin_logo.png',
-                    width: 30, height: 30),
-                const SizedBox(width: 10),
-                const Text('Chipin',
-                    style: TextStyle(fontWeight: FontWeight.w800)),
-              ],
-            ),
+            toolbarHeight: 68,
+            titleSpacing: 16,
+            title: Row(children: [
+              Image.asset('assets/brand/chipin_logo.png',
+                  width: 38, height: 38),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(_greet(),
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: scheme.onSurfaceVariant)),
+                      const Text('Chipin',
+                          style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.4)),
+                    ]),
+              ),
+            ]),
             actions: [
               IconButton(
                 tooltip: 'Tài khoản',
-                icon: const Icon(Icons.account_circle_outlined),
+                icon: const Icon(AppIcons.circleUser),
                 onPressed: _openAccount,
               ),
-              IconButton(
-                tooltip: 'Hoạt động',
-                icon: const Icon(Icons.history_rounded),
-                onPressed: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const ActivityScreen())),
-              ),
-              ValueListenableBuilder<Plan>(
-                valueListenable: App.plan,
-                builder: (context, plan, _) => Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: ActionChip(
-                    avatar: const Icon(Icons.workspace_premium, size: 18),
-                    label: Text(plan.title),
-                    onPressed: () => Navigator.push(context,
-                        MaterialPageRoute(builder: (_) => const PlansScreen())),
-                  ),
-                ),
-              ),
+              const SizedBox(width: 4),
             ],
           ),
           body: snap.hasError
@@ -117,7 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ? const Center(child: CircularProgressIndicator())
                   : items.isEmpty
                       ? EmptyState(
-                          icon: Icons.groups_rounded,
+                          icon: AppIcons.users,
                           title: 'Chưa có nhóm nào',
                           message:
                               'Tạo nhóm cho phòng trọ, buổi đi ăn hay chuyến du lịch để bắt đầu chia tiền.',
@@ -129,21 +138,28 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: ListView(
                             padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
                             children: [
-                              Padding(
-                                padding:
-                                    const EdgeInsets.fromLTRB(4, 0, 4, 10),
-                                child: Text(_greet(),
-                                    style: TextStyle(
-                                        fontSize: 15,
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurfaceVariant)),
-                              ),
                               _SummaryCard(items: items),
-                              const SectionHeader('Nhóm của bạn'),
-                              for (final (g, s) in items)
+                              const SizedBox(height: 16),
+                              _Segmented(
+                                labels: const ['Tất cả', 'Còn nợ', 'Đã xong'],
+                                value: _filter,
+                                onChanged: (v) => setState(() => _filter = v),
+                              ),
+                              const SizedBox(height: 12),
+                              if (shown.isEmpty)
                                 Padding(
-                                  padding: const EdgeInsets.only(bottom: 12),
+                                  padding: const EdgeInsets.all(32),
+                                  child: Text(
+                                      _filter == 1
+                                          ? 'Không nhóm nào còn nợ 🎉'
+                                          : 'Chưa có nhóm nào trả xong.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                          color: scheme.onSurfaceVariant)),
+                                ),
+                              for (final (g, s) in shown)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 10),
                                   child: _GroupCard(
                                       group: g,
                                       summary: s,
@@ -154,7 +170,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
           floatingActionButton: FloatingActionButton.extended(
             onPressed: () => _createGroup(items?.length ?? 0),
-            icon: const Icon(Icons.add),
+            icon: const Icon(AppIcons.plus),
             label: const Text('Tạo nhóm'),
           ),
         );
@@ -163,36 +179,146 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+/// Thẻ tóm tắt: tổng chi, số tiền còn phải trả, số nhóm đã xong.
 class _SummaryCard extends StatelessWidget {
   final List<(Group, GroupSummary)> items;
   const _SummaryCard({required this.items});
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final total = items.fold<int>(0, (sum, e) => sum + e.$2.totalSpent);
-    final pending = items.fold<int>(0, (sum, e) => sum + e.$2.transfers.length);
+    final remaining = items.fold<int>(
+        0, (sum, e) => sum + e.$2.transfers.fold<int>(0, (a, t) => a + t.amount));
     final open = items.where((e) => e.$2.transfers.isNotEmpty).length;
-    return GradientPanel(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
+    final done = items.length - open;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(
+              child: Text('Tổng chi tiêu ${items.length} nhóm',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: scheme.onSurfaceVariant)),
+            ),
+            Icon(AppIcons.wallet, size: 18, color: scheme.onSurfaceVariant),
+          ]),
+          const SizedBox(height: 4),
+          Text(formatVnd(total),
+              style: const TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -1,
+                  fontFeatures: [FontFeature.tabularFigures()])),
+          const SizedBox(height: 14),
+          Row(children: [
+            _Tile(
+              color: AppTheme.owe,
+              label: 'Còn phải trả',
+              value: formatVnd(remaining),
+              sub: '$open nhóm',
+            ),
+            const SizedBox(width: 8),
+            _Tile(
+              color: AppTheme.owed,
+              label: 'Đã trả xong',
+              value: '$done nhóm',
+              sub: done == items.length ? 'Sạch nợ 🎉' : 'trên ${items.length}',
+            ),
+          ]),
+        ]),
+      ),
+    );
+  }
+}
+
+class _Tile extends StatelessWidget {
+  final Color color;
+  final String label;
+  final String value;
+  final String sub;
+  const _Tile(
+      {required this.color,
+      required this.label,
+      required this.value,
+      required this.sub});
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: dark ? 0.16 : 0.08),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label,
+              style: TextStyle(
+                  color: color, fontSize: 12, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 2),
+          Text(value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  color: color, fontSize: 16, fontWeight: FontWeight.w700)),
+          Text(sub,
+              style: TextStyle(
+                  color: color.withValues(alpha: 0.8), fontSize: 11)),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Bộ chọn dạng thanh chia đoạn, kiểu shadcn "Tabs".
+class _Segmented extends StatelessWidget {
+  final List<String> labels;
+  final int value;
+  final ValueChanged<int> onChanged;
+  const _Segmented(
+      {required this.labels, required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(children: [
+        for (var i = 0; i < labels.length; i++)
           Expanded(
-            child: Text('Tổng chi tiêu các nhóm',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.9))),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => onChanged(i),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: i == value ? scheme.surface : Colors.transparent,
+                  borderRadius: BorderRadius.circular(9),
+                  boxShadow: i == value ? AppTheme.softShadow : null,
+                ),
+                child: Text(labels[i],
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight:
+                            i == value ? FontWeight.w600 : FontWeight.w500,
+                        color: i == value
+                            ? scheme.onSurface
+                            : scheme.onSurfaceVariant)),
+              ),
+            ),
           ),
-          const Icon(Icons.account_balance_wallet_rounded, size: 20),
-        ]),
-        const SizedBox(height: 6),
-        Text(formatVnd(total),
-            style: const TextStyle(
-                color: Colors.white, fontSize: 30, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 16),
-        Row(children: [
-          GlassStat(label: 'Nhóm', value: '${items.length}'),
-          const SizedBox(width: 8),
-          GlassStat(label: 'Còn nợ', value: '$open'),
-          const SizedBox(width: 8),
-          GlassStat(label: 'Lượt trả', value: '$pending'),
-        ]),
       ]),
     );
   }
@@ -214,11 +340,11 @@ class _GroupCard extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(14),
           child: Row(children: [
             IconTile(groupTypeIcon(group.type), groupTypeColor(group.type),
-                size: 52),
-            const SizedBox(width: 14),
+                size: 46),
+            const SizedBox(width: 12),
             Expanded(
               child:
                   Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -226,23 +352,25 @@ class _GroupCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w700)),
+                        fontSize: 15, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 2),
                 Text(
-                    '${groupTypeLabel(group.type)} · ${summary.expenses.length} khoản chi',
-                    style: TextStyle(color: muted, fontSize: 13)),
-                const SizedBox(height: 8),
-                AvatarStack(summary.members.map((m) => m.name).toList()),
+                    '${summary.members.length} người · ${summary.expenses.length} khoản chi',
+                    style: TextStyle(color: muted, fontSize: 12.5)),
               ]),
             ),
+            const SizedBox(width: 8),
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
               Text(formatVnd(summary.totalSpent),
-                  style: const TextStyle(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 6),
               pending == 0
                   ? const StatusPill('Đã xong', AppTheme.owed)
                   : StatusPill('Còn $pending lượt', AppTheme.owe),
             ]),
+            const SizedBox(width: 4),
+            Icon(AppIcons.chevronRight, size: 18, color: muted),
           ]),
         ),
       ),

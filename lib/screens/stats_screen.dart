@@ -8,6 +8,7 @@ import '../models/group.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ui.dart';
+import '../widgets/app_icons.dart';
 
 /// Thống kê chi tiêu của nhóm: theo danh mục, theo người, theo tháng.
 class StatsScreen extends StatelessWidget {
@@ -35,7 +36,7 @@ class StatsScreen extends StatelessWidget {
       appBar: AppBar(title: Text('Thống kê · ${group.name}')),
       body: s.expenses.isEmpty
           ? const EmptyState(
-              icon: Icons.insights_rounded,
+              icon: AppIcons.chartPie,
               title: 'Chưa có số liệu',
               message: 'Thêm khoản chi để xem nhóm tiêu vào đâu nhiều nhất.',
             )

@@ -7,6 +7,7 @@ import '../services/jwt_verifier.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ui.dart';
+import '../widgets/app_icons.dart';
 
 /// Hiển thị ID token (JWT) của người đang đăng nhập: 3 phần tô màu như
 /// jwt.io, header/payload đã giải mã, hạn dùng và kết quả kiểm chữ ký.
@@ -35,7 +36,7 @@ class _JwtScreenState extends State<JwtScreen> {
         actions: [
           IconButton(
             tooltip: 'Xin token mới',
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(AppIcons.refreshCw),
             onPressed: _refresh,
           ),
         ],
@@ -45,7 +46,7 @@ class _JwtScreenState extends State<JwtScreen> {
         builder: (context, snap) {
           if (snap.hasError) {
             return EmptyState(
-              icon: Icons.error_outline,
+              icon: AppIcons.circleAlert,
               title: 'Không lấy được token',
               message: '${snap.error}',
               actionLabel: 'Thử lại',
@@ -92,7 +93,7 @@ class _JwtScreenState extends State<JwtScreen> {
                 await Clipboard.setData(ClipboardData(text: jwt.raw));
                 if (context.mounted) showSnack(context, 'Đã chép token');
               },
-              icon: const Icon(Icons.copy, size: 18),
+              icon: const Icon(AppIcons.copy, size: 18),
               label: const Text('Chép'),
             )),
         Card(
@@ -149,7 +150,7 @@ class _JwtScreenState extends State<JwtScreen> {
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          IconTile(ok ? Icons.verified_user : Icons.gpp_maybe, color),
+          IconTile(ok ? AppIcons.shieldCheck : AppIcons.shieldAlert, color),
           const SizedBox(width: 14),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

@@ -31,6 +31,9 @@ tự tính ai nợ ai, rút gọn thành ít lượt chuyển nhất, hiện QR 
 - Lắc điện thoại để random người bao bữa (gia tốc kế)
 - Lưu offline bằng SQLite, có dữ liệu mẫu để demo
 
+Giao diện "Clean Minimal" kiểu shadcn/ui: font Be Vietnam Pro (SIL OFL 1.1) và icon Lucide (ISC),
+cả hai đóng gói sẵn trong `assets/fonts/` nên không cần mạng. Mã icon ở `lib/widgets/app_icons.dart`.
+
 Module phần cứng dùng: camera, cảm biến gia tốc, rung, thông báo, bộ nhớ (thư viện ảnh), clipboard, chia sẻ.
 
 ## Chạy lần đầu

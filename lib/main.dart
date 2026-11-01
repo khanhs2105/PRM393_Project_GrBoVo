@@ -2,10 +2,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'screens/auth/login_screen.dart';
-import 'screens/home_screen.dart';
+import 'screens/root_shell.dart';
 import 'services/app_services.dart';
 import 'services/notification_service.dart';
 import 'theme.dart';
+import 'widgets/app_icons.dart';
 import 'widgets/ui.dart';
 
 Future<void> main() async {
@@ -22,6 +23,12 @@ class ChiaTienApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      // Chạm vào chỗ trống bất kỳ ngoài ô nhập thì ẩn bàn phím.
+      builder: (context, child) => GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        child: child,
+      ),
       title: 'Chipin',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
@@ -47,7 +54,7 @@ class AuthGate extends StatelessWidget {
         final user = snap.data;
         if (user == null) return const LoginScreen();
         // key theo uid: đổi tài khoản thì màn chính tạo lại từ đầu.
-        return HomeScreen(key: ValueKey(user.uid));
+        return RootShell(key: ValueKey(user.uid));
       },
     );
   }
@@ -60,7 +67,7 @@ class _FirebaseMissing extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: EmptyState(
-        icon: Icons.cloud_off_rounded,
+        icon: AppIcons.cloudOff,
         title: 'Chưa kết nối được Firebase',
         message: 'Kiểm tra file android/app/google-services.json '
             '(xem docs/firebase-setup.md).\n\n${App.firebaseError}',

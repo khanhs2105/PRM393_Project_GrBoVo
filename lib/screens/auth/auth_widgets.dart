@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../widgets/ui.dart';
+import '../../widgets/app_icons.dart';
 
 /// Khung chung cho màn đăng nhập/đăng ký: đầu trang gradient có logo.
 class AuthScaffold extends StatelessWidget {
@@ -33,7 +34,7 @@ class AuthScaffold extends StatelessWidget {
                         alignment: Alignment.centerLeft,
                         child: IconButton(
                           tooltip: 'Quay lại',
-                          icon: const Icon(Icons.arrow_back),
+                          icon: const Icon(AppIcons.arrowLeft),
                           onPressed: () => Navigator.maybePop(context),
                         ),
                       ),
@@ -99,7 +100,7 @@ class AuthError extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(children: [
-        Icon(Icons.error_outline, color: scheme.onErrorContainer),
+        Icon(AppIcons.circleAlert, color: scheme.onErrorContainer),
         const SizedBox(width: 10),
         Expanded(
             child: Text(text, style: TextStyle(color: scheme.onErrorContainer))),

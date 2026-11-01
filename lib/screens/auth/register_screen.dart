@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../logic/auth_validation.dart';
 import '../../services/app_services.dart';
 import 'auth_widgets.dart';
+import '../../widgets/app_icons.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -66,7 +67,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               textInputAction: TextInputAction.next,
               decoration: const InputDecoration(
                   labelText: 'Tên hiển thị',
-                  prefixIcon: Icon(Icons.person_outline)),
+                  prefixIcon: Icon(AppIcons.user)),
               validator: validateDisplayName,
             ),
             const SizedBox(height: 14),
@@ -76,7 +77,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               autofillHints: const [AutofillHints.email],
               textInputAction: TextInputAction.next,
               decoration: const InputDecoration(
-                  labelText: 'Email', prefixIcon: Icon(Icons.email_outlined)),
+                  labelText: 'Email', prefixIcon: Icon(AppIcons.mail)),
               validator: validateEmail,
             ),
             const SizedBox(height: 14),
@@ -88,10 +89,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
               decoration: InputDecoration(
                 labelText: 'Mật khẩu',
                 helperText: 'Ít nhất 6 ký tự, có cả chữ và số',
-                prefixIcon: const Icon(Icons.lock_outline),
+                prefixIcon: const Icon(AppIcons.lock),
                 suffixIcon: IconButton(
                   tooltip: _hide ? 'Hiện mật khẩu' : 'Ẩn mật khẩu',
-                  icon: Icon(_hide ? Icons.visibility : Icons.visibility_off),
+                  icon: Icon(_hide ? AppIcons.eye : AppIcons.eyeOff),
                   onPressed: () => setState(() => _hide = !_hide),
                 ),
               ),
@@ -105,7 +106,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               onFieldSubmitted: (_) => _submit(),
               decoration: const InputDecoration(
                   labelText: 'Nhập lại mật khẩu',
-                  prefixIcon: Icon(Icons.lock_reset)),
+                  prefixIcon: Icon(AppIcons.rotateCcwKey)),
               validator: (v) => validateConfirmPassword(v, _password.text),
             ),
             const SizedBox(height: 16),

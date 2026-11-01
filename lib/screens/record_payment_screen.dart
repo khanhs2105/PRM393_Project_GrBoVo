@@ -9,6 +9,7 @@ import '../models/settlement.dart';
 import '../services/app_services.dart';
 import '../widgets/common.dart';
 import '../widgets/ui.dart';
+import '../widgets/app_icons.dart';
 
 /// Ghi nhận một lần trả tiền bất kỳ ("Settle up"): chọn ai trả, ai nhận,
 /// bao nhiêu. Dùng cho trả một phần, trả bằng tiền mặt, hoặc trả trước.
@@ -189,7 +190,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
             clipBehavior: Clip.antiAlias,
             child: Column(children: [
               ListTile(
-                leading: const Icon(Icons.event_rounded),
+                leading: const Icon(AppIcons.calendar),
                 title: const Text('Ngày trả'),
                 trailing: Text(formatDate(_date),
                     style: const TextStyle(fontWeight: FontWeight.w600)),
@@ -209,7 +210,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
                 child: TextField(
                   controller: _note,
                   decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.notes_rounded),
+                    prefixIcon: Icon(AppIcons.notebookPen),
                     hintText: 'Ghi chú, ví dụ: tiền mặt',
                   ),
                 ),
@@ -223,7 +224,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           child: FilledButton.icon(
             onPressed: _save,
-            icon: const Icon(Icons.check_rounded),
+            icon: const Icon(AppIcons.check),
             label: const Text('Lưu thanh toán'),
           ),
         ),

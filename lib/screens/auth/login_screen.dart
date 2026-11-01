@@ -6,6 +6,7 @@ import '../../services/app_services.dart';
 import '../../widgets/common.dart';
 import 'auth_widgets.dart';
 import 'register_screen.dart';
+import '../../widgets/app_icons.dart';
 
 /// Màn đăng nhập. Đăng nhập xong, AuthGate trong main.dart tự chuyển sang
 /// màn chính nhờ lắng nghe authStateChanges().
@@ -79,7 +80,7 @@ class _LoginScreenState extends State<LoginScreen> {
               autofillHints: const [AutofillHints.email],
               textInputAction: TextInputAction.next,
               decoration: const InputDecoration(
-                  labelText: 'Email', prefixIcon: Icon(Icons.email_outlined)),
+                  labelText: 'Email', prefixIcon: Icon(AppIcons.mail)),
               validator: validateEmail,
             ),
             const SizedBox(height: 14),
@@ -91,10 +92,10 @@ class _LoginScreenState extends State<LoginScreen> {
               onFieldSubmitted: (_) => _submit(),
               decoration: InputDecoration(
                 labelText: 'Mật khẩu',
-                prefixIcon: const Icon(Icons.lock_outline),
+                prefixIcon: const Icon(AppIcons.lock),
                 suffixIcon: IconButton(
                   tooltip: _hide ? 'Hiện mật khẩu' : 'Ẩn mật khẩu',
-                  icon: Icon(_hide ? Icons.visibility : Icons.visibility_off),
+                  icon: Icon(_hide ? AppIcons.eye : AppIcons.eyeOff),
                   onPressed: () => setState(() => _hide = !_hide),
                 ),
               ),

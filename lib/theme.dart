@@ -1,21 +1,34 @@
 import 'package:flutter/material.dart';
 
-/// Giao diện "Coral Pop": màu hồng cam theo logo Chipin, nền sáng ấm,
-/// thẻ trắng bo góc lớn có bóng mềm, thẻ tổng dạng gradient.
+/// Giao diện "Clean Minimal" (kiểu shadcn/ui): trắng đen, viền mảnh,
+/// không đổ bóng, chữ số to. Màu chỉ dùng để báo nợ (đỏ) và được nợ (xanh).
+/// Font Be Vietnam Pro, icon Lucide (xem widgets/app_icons.dart).
 class AppTheme {
+  /// Màu thương hiệu (logo), chỉ dùng làm điểm nhấn nhỏ.
   static const seed = Color(0xFFFF4D6D);
   static const seedEnd = Color(0xFFFF8F3F);
-  static const owed = Color(0xFF16946A); // được nợ
-  static const owe = Color(0xFFD7354F); // đang nợ
+  static const owed = Color(0xFF16A34A); // được nợ
+  static const owe = Color(0xFFDC2626); // đang nợ
 
-  /// Gradient thương hiệu (giống logo), dùng cho thẻ tổng và nút nổi bật.
+  static const font = 'BeVietnamPro';
+
+  // Bảng màu xám "zinc".
+  static const ink = Color(0xFF09090B);
+  static const zinc50 = Color(0xFFFAFAFA);
+  static const zinc100 = Color(0xFFF4F4F5);
+  static const zinc200 = Color(0xFFE4E4E7);
+  static const zinc400 = Color(0xFFA1A1AA);
+  static const zinc500 = Color(0xFF71717A);
+  static const zinc800 = Color(0xFF27272A);
+  static const zinc900 = Color(0xFF18181B);
+
+  /// Gradient logo, dùng cho các điểm nhấn thương hiệu.
   static const brandGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [seed, seedEnd],
   );
 
-  /// Bóng đổ màu hồng nhạt dưới các khối gradient.
   static List<BoxShadow> brandShadow({double alpha = 0.35}) => [
         BoxShadow(
           color: seed.withValues(alpha: alpha),
@@ -24,119 +37,227 @@ class AppTheme {
         ),
       ];
 
+  /// Bóng rất nhẹ, dùng cho tab đang chọn.
+  static const softShadow = [
+    BoxShadow(color: Color(0x14000000), blurRadius: 3, offset: Offset(0, 1)),
+  ];
+
   static ThemeData light() => _build(Brightness.light);
   static ThemeData dark() => _build(Brightness.dark);
 
   static ThemeData _build(Brightness brightness) {
     final light = brightness == Brightness.light;
+    final bg = light ? zinc50 : ink;
+    final card = light ? Colors.white : zinc900;
+    final border = light ? zinc200 : zinc800;
+    final fg = light ? ink : zinc50;
+    final muted = light ? zinc500 : zinc400;
+    final subtle = light ? zinc100 : zinc800;
+
     final scheme = ColorScheme.fromSeed(
-      seedColor: seed,
+      seedColor: ink,
       brightness: brightness,
-      // Giữ màu primary sát màu logo thay vì bị làm nhạt.
-      dynamicSchemeVariant: DynamicSchemeVariant.fidelity,
+      dynamicSchemeVariant: DynamicSchemeVariant.monochrome,
+    ).copyWith(
+      primary: fg,
+      onPrimary: bg,
+      primaryContainer: subtle,
+      onPrimaryContainer: fg,
+      secondary: fg,
+      onSecondary: bg,
+      secondaryContainer: subtle,
+      onSecondaryContainer: fg,
+      tertiary: seed,
+      surface: card,
+      onSurface: fg,
+      onSurfaceVariant: muted,
+      surfaceContainerLowest: card,
+      surfaceContainerLow: card,
+      surfaceContainer: subtle,
+      surfaceContainerHigh: subtle,
+      surfaceContainerHighest: subtle,
+      outline: light ? zinc400 : zinc500,
+      outlineVariant: border,
+      error: owe,
     );
-    final radius = BorderRadius.circular(20);
-    return ThemeData(
+
+    final radius = BorderRadius.circular(16);
+    final inputBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: border),
+    );
+
+    final base = ThemeData(
       useMaterial3: true,
+      brightness: brightness,
+      fontFamily: font,
+    );
+
+    return base.copyWith(
       colorScheme: scheme,
-      scaffoldBackgroundColor:
-          light ? const Color(0xFFFFF7F5) : const Color(0xFF1A1416),
+      scaffoldBackgroundColor: bg,
+      canvasColor: bg,
+      dividerColor: border,
+      textTheme: base.textTheme.apply(bodyColor: fg, displayColor: fg),
+      iconTheme: IconThemeData(color: fg, size: 22),
+      dividerTheme: DividerThemeData(color: border, thickness: 1, space: 1),
       appBarTheme: AppBarTheme(
-        backgroundColor: Colors.transparent,
+        backgroundColor: bg,
+        foregroundColor: fg,
         surfaceTintColor: Colors.transparent,
         scrolledUnderElevation: 0,
+        elevation: 0,
         centerTitle: false,
+        iconTheme: IconThemeData(color: fg, size: 22),
+        actionsIconTheme: IconThemeData(color: fg, size: 22),
         titleTextStyle: TextStyle(
-          fontSize: 22,
+          fontFamily: font,
+          fontSize: 20,
           fontWeight: FontWeight.w700,
-          color: scheme.onSurface,
+          letterSpacing: -0.3,
+          color: fg,
         ),
       ),
       cardTheme: CardThemeData(
-        elevation: light ? 3 : 0,
+        elevation: 0,
         margin: EdgeInsets.zero,
-        color: light ? Colors.white : const Color(0xFF261E21),
+        color: card,
         surfaceTintColor: Colors.transparent,
-        shadowColor: const Color(0xFF78283C).withValues(alpha: 0.18),
         shape: RoundedRectangleBorder(
           borderRadius: radius,
-          side: light
-              ? BorderSide.none
-              : BorderSide(
-                  color: scheme.outlineVariant.withValues(alpha: 0.4)),
+          side: BorderSide(color: border),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: light
-            ? Colors.white
-            : scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(
-              color: scheme.outlineVariant.withValues(alpha: light ? 0.6 : 0.3)),
-        ),
-        border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide.none),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: scheme.primary, width: 2),
-        ),
+        fillColor: card,
+        border: inputBorder,
+        enabledBorder: inputBorder,
+        focusedBorder: inputBorder.copyWith(
+            borderSide: BorderSide(color: fg, width: 1.5)),
+        labelStyle: TextStyle(color: muted),
+        hintStyle: TextStyle(color: muted),
+        prefixIconColor: muted,
+        suffixIconColor: muted,
         contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          minimumSize: const Size(0, 52),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          backgroundColor: fg,
+          foregroundColor: bg,
+          minimumSize: const Size(0, 50),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          textStyle: const TextStyle(
+              fontFamily: font, fontSize: 15, fontWeight: FontWeight.w600),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
+          foregroundColor: fg,
           minimumSize: const Size(0, 48),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          side: BorderSide(color: border),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          textStyle: const TextStyle(
+              fontFamily: font, fontSize: 15, fontWeight: FontWeight.w600),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: fg,
+          textStyle: const TextStyle(
+              fontFamily: font, fontWeight: FontWeight.w600),
         ),
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
-        backgroundColor: scheme.primary,
-        foregroundColor: scheme.onPrimary,
-        elevation: 4,
-        highlightElevation: 6,
-        extendedTextStyle:
-            const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: fg,
+        foregroundColor: bg,
+        elevation: 2,
+        highlightElevation: 4,
+        extendedTextStyle: const TextStyle(
+            fontFamily: font, fontSize: 15, fontWeight: FontWeight.w600),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: card,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: subtle,
+        elevation: 0,
+        height: 66,
+        labelTextStyle: WidgetStateProperty.resolveWith((states) => TextStyle(
+              fontFamily: font,
+              fontSize: 12,
+              fontWeight: states.contains(WidgetState.selected)
+                  ? FontWeight.w700
+                  : FontWeight.w500,
+              color: states.contains(WidgetState.selected) ? fg : muted,
+            )),
+        iconTheme: WidgetStateProperty.resolveWith((states) => IconThemeData(
+              size: 22,
+              color: states.contains(WidgetState.selected) ? fg : muted,
+            )),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: card,
+        selectedColor: subtle,
+        side: BorderSide(color: border),
+        labelStyle: TextStyle(fontFamily: font, color: fg, fontSize: 13),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+      listTileTheme: ListTileThemeData(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+        iconColor: muted,
       ),
       dialogTheme: DialogThemeData(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      ),
-      bottomSheetTheme: const BottomSheetThemeData(
-        showDragHandle: true,
+        backgroundColor: card,
+        surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: border),
+        ),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: card,
+        surfaceTintColor: Colors.transparent,
+        showDragHandle: true,
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: card,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: border),
+        ),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      ),
-      chipTheme: ChipThemeData(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      ),
-      listTileTheme: const ListTileThemeData(
-        contentPadding: EdgeInsets.symmetric(horizontal: 16),
+        backgroundColor: light ? ink : zinc50,
+        contentTextStyle: TextStyle(fontFamily: font, color: bg),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
       tabBarTheme: TabBarThemeData(
         indicatorSize: TabBarIndicatorSize.tab,
         dividerColor: Colors.transparent,
-        labelStyle: const TextStyle(fontWeight: FontWeight.w600),
+        labelStyle: const TextStyle(
+            fontFamily: font, fontSize: 13, fontWeight: FontWeight.w600),
+        unselectedLabelStyle: const TextStyle(
+            fontFamily: font, fontSize: 13, fontWeight: FontWeight.w500),
         indicator: BoxDecoration(
-          gradient: brandGradient,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: brandShadow(alpha: 0.25),
+          color: card,
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: softShadow,
         ),
-        labelColor: Colors.white,
-        unselectedLabelColor: scheme.onSurfaceVariant,
+        labelColor: fg,
+        unselectedLabelColor: muted,
+      ),
+      progressIndicatorTheme: ProgressIndicatorThemeData(color: fg),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((s) =>
+            s.contains(WidgetState.selected) ? bg : (light ? zinc400 : zinc500)),
+        trackColor: WidgetStateProperty.resolveWith(
+            (s) => s.contains(WidgetState.selected) ? fg : subtle),
       ),
     );
   }

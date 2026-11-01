@@ -8,6 +8,7 @@ import '../models/member.dart';
 import '../services/app_services.dart';
 import '../widgets/common.dart';
 import 'qr_scan_screen.dart';
+import '../widgets/app_icons.dart';
 
 /// Thêm/sửa thành viên và tài khoản ngân hàng nhận tiền.
 /// [member] có id null nghĩa là thêm mới.
@@ -120,7 +121,7 @@ class _MemberFormScreenState extends State<MemberFormScreen> {
         title: Text(_isNew ? 'Thêm thành viên' : 'Sửa thành viên'),
         actions: [
           if (!_isNew)
-            IconButton(onPressed: _delete, icon: const Icon(Icons.delete_outline)),
+            IconButton(onPressed: _delete, icon: const Icon(AppIcons.trash2)),
         ],
       ),
       body: Form(
@@ -143,7 +144,7 @@ class _MemberFormScreenState extends State<MemberFormScreen> {
               ),
               FilledButton.tonalIcon(
                 onPressed: _scan,
-                icon: const Icon(Icons.qr_code_scanner),
+                icon: const Icon(AppIcons.scanLine),
                 label: const Text('Quét QR'),
               ),
             ]),

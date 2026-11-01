@@ -13,6 +13,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ui.dart';
 import 'expense_form_screen.dart';
+import '../widgets/app_icons.dart';
 
 /// Xem chi tiết một khoản chi: ai trả, mỗi người chịu bao nhiêu, ảnh hóa đơn.
 /// Giống màn chi tiết khoản chi của Splitwise, có nút sửa và xóa.
@@ -142,11 +143,11 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
         title: const Text('Chi tiết khoản chi'),
         actions: [
           IconButton(
-              tooltip: 'Sửa', onPressed: _edit, icon: const Icon(Icons.edit)),
+              tooltip: 'Sửa', onPressed: _edit, icon: const Icon(AppIcons.pencil)),
           IconButton(
               tooltip: 'Xóa',
               onPressed: _delete,
-              icon: const Icon(Icons.delete_outline)),
+              icon: const Icon(AppIcons.trash2)),
         ],
       ),
       body: ListView(
@@ -229,7 +230,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                 padding: const EdgeInsets.all(16),
                 child: Row(crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                  Icon(Icons.notes_rounded, color: muted),
+                  Icon(AppIcons.notebookPen, color: muted),
                   const SizedBox(width: 12),
                   Expanded(child: Text(e.note!)),
                 ]),

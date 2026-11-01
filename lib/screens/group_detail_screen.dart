@@ -31,6 +31,7 @@ import 'member_form_screen.dart';
 import 'payment_screen.dart';
 import 'record_payment_screen.dart';
 import 'stats_screen.dart';
+import '../widgets/app_icons.dart';
 
 class GroupDetailScreen extends StatefulWidget {
   final int groupId;
@@ -150,13 +151,13 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                   valueListenable: App.plan,
                   builder: (context, plan, _) => IconButton(
                     tooltip: 'Lắc để chọn người bao',
-                    icon: const Icon(Icons.casino_outlined),
+                    icon: const Icon(AppIcons.dices),
                     onPressed: () => showShakePicker(context, s.members, plan),
                   ),
                 ),
                 IconButton(
                   tooltip: 'Thống kê',
-                  icon: const Icon(Icons.insights_rounded),
+                  icon: const Icon(AppIcons.chartPie),
                   onPressed: () =>
                       _open(StatsScreen(group: group, summary: s)),
                 ),
@@ -180,28 +181,28 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                     PopupMenuItem(
                         value: 'activity',
                         child: ListTile(
-                            leading: Icon(Icons.history_rounded),
+                            leading: Icon(AppIcons.history),
                             title: Text('Lịch sử hoạt động'))),
                     PopupMenuItem(
                         value: 'share',
                         child: ListTile(
-                            leading: Icon(Icons.ios_share_rounded),
+                            leading: Icon(AppIcons.share),
                             title: Text('Chia sẻ tóm tắt'))),
                     PopupMenuItem(
                         value: 'csv',
                         child: ListTile(
-                            leading: Icon(Icons.table_chart_outlined),
+                            leading: Icon(AppIcons.sheet),
                             title: Text('Xuất file CSV'))),
                     PopupMenuDivider(),
                     PopupMenuItem(
                         value: 'edit',
                         child: ListTile(
-                            leading: Icon(Icons.edit_outlined),
+                            leading: Icon(AppIcons.pencil),
                             title: Text('Sửa nhóm'))),
                     PopupMenuItem(
                         value: 'delete',
                         child: ListTile(
-                            leading: Icon(Icons.delete_outline),
+                            leading: Icon(AppIcons.trash2),
                             title: Text('Xóa nhóm'))),
                   ],
                 ),
@@ -258,7 +259,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
             ]),
             floatingActionButton: FloatingActionButton.extended(
               onPressed: () => _open(ExpenseFormScreen(groupId: group.id!)),
-              icon: const Icon(Icons.add),
+              icon: const Icon(AppIcons.plus),
               label: const Text('Thêm khoản chi'),
             ),
           ),
@@ -383,7 +384,7 @@ class _ExpensesTabState extends State<_ExpensesTab> {
     final s = widget.summary;
     if (s.expenses.isEmpty) {
       return EmptyState(
-        icon: Icons.receipt_long,
+        icon: AppIcons.receipt,
         title: 'Chưa có khoản chi',
         message: 'Thêm bữa ăn, tiền phòng hay tiền điện đầu tiên của nhóm.',
         actionLabel: 'Thêm khoản chi',
@@ -412,13 +413,13 @@ class _ExpensesTabState extends State<_ExpensesTab> {
             onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
               isDense: true,
-              prefixIcon: const Icon(Icons.search_rounded),
+              prefixIcon: const Icon(AppIcons.search),
               hintText: 'Tìm khoản chi, ghi chú...',
               suffixIcon: _filtering
                   ? IconButton(
                       tooltip: 'Bỏ lọc',
                       onPressed: _clear,
-                      icon: const Icon(Icons.close_rounded))
+                      icon: const Icon(AppIcons.x))
                   : null,
             ),
           ),
@@ -543,7 +544,7 @@ class _BalancesTab extends StatelessWidget {
         const SizedBox(height: 12),
         OutlinedButton.icon(
           onPressed: onRecord,
-          icon: const Icon(Icons.payments_outlined),
+          icon: const Icon(AppIcons.banknote),
           label: const Text('Ghi nhận thanh toán khác'),
         ),
         const SectionHeader('Số dư từng người'),
@@ -587,7 +588,7 @@ class _BalancesTab extends StatelessWidget {
               for (final st in s.settlements)
                 ListTile(
                   leading: const IconTile(
-                      Icons.check_rounded, AppTheme.owed, size: 40),
+                      AppIcons.check, AppTheme.owed, size: 40),
                   title: Text(
                       '${s.memberById(st.fromId).name} → ${s.memberById(st.toId).name}'),
                   subtitle: Text(st.note == null
@@ -627,7 +628,7 @@ class _TransferCard extends StatelessWidget {
           MemberAvatar(from.name, radius: 20),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: Icon(Icons.arrow_forward_rounded,
+            child: Icon(AppIcons.arrowRight,
                 size: 18, color: scheme.onSurfaceVariant),
           ),
           MemberAvatar(to.name, radius: 20),
@@ -649,7 +650,7 @@ class _TransferCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 14),
             ),
             onPressed: onPay,
-            icon: const Icon(Icons.qr_code_2, size: 18),
+            icon: const Icon(AppIcons.qrCode, size: 18),
             label: const Text('Trả'),
           ),
         ]),
@@ -708,7 +709,7 @@ class _MembersTab extends StatelessWidget {
                     ? '${findBankName(m.bankBin)} · ${m.accountNo}'
                     : 'Chưa có tài khoản nhận tiền'),
                 trailing: m.hasBank
-                    ? const Icon(Icons.verified_rounded, color: AppTheme.owed)
+                    ? const Icon(AppIcons.badgeCheck, color: AppTheme.owed)
                     : const StatusPill('Thêm TK', Colors.orange),
                 onTap: () => onOpen(m),
               ),
@@ -718,7 +719,7 @@ class _MembersTab extends StatelessWidget {
         const SizedBox(height: 12),
         OutlinedButton.icon(
           onPressed: onAdd,
-          icon: const Icon(Icons.person_add_alt_1),
+          icon: const Icon(AppIcons.userPlus),
           label: const Text('Thêm thành viên'),
         ),
       ],

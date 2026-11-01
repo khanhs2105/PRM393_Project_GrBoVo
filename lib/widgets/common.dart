@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'app_icons.dart';
 
 const groupTypes = {
-  'meal': ('Đi ăn', Icons.restaurant_rounded),
-  'room': ('Phòng trọ', Icons.home_rounded),
-  'trip': ('Du lịch', Icons.flight_takeoff_rounded),
-  'other': ('Khác', Icons.groups_rounded),
+  'meal': ('Đi ăn', AppIcons.utensils),
+  'room': ('Phòng trọ', AppIcons.house),
+  'trip': ('Du lịch', AppIcons.planeTakeoff),
+  'other': ('Khác', AppIcons.users),
 };
 
 String groupTypeLabel(String type) => (groupTypes[type] ?? groupTypes['other']!).$1;

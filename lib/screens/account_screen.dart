@@ -9,6 +9,7 @@ import '../services/auth_service.dart';
 import '../widgets/common.dart';
 import '../widgets/ui.dart';
 import 'jwt_screen.dart';
+import '../widgets/app_icons.dart';
 
 /// Tài khoản: hồ sơ trên Firestore, xem JWT, sao lưu/khôi phục, đăng xuất.
 /// Trả về true khi dữ liệu trên máy đã thay đổi (khôi phục) để màn chính tải lại.
@@ -161,7 +162,7 @@ class _AccountScreenState extends State<AccountScreen> {
                     ),
                     IconButton(
                       tooltip: 'Đổi tên',
-                      icon: const Icon(Icons.edit),
+                      icon: const Icon(AppIcons.pencil),
                       onPressed: _busy ? null : () => _rename(name),
                     ),
                   ]),
@@ -186,7 +187,7 @@ class _AccountScreenState extends State<AccountScreen> {
                             : formatDateTime(p!.lastBackupAt!)),
                     if (snap.hasError)
                       ListTile(
-                        leading: const Icon(Icons.cloud_off),
+                        leading: const Icon(AppIcons.cloudOff),
                         title: const Text('Không đọc được hồ sơ'),
                         subtitle: Text('${snap.error}'),
                       ),
@@ -195,11 +196,11 @@ class _AccountScreenState extends State<AccountScreen> {
                 const SectionHeader('Bảo mật'),
                 Card(
                   child: ListTile(
-                    leading: const IconTile(Icons.key_rounded, Color(0xFF7E57C2)),
+                    leading: const IconTile(AppIcons.keyRound, Color(0xFF7E57C2)),
                     title: const Text('Xem JWT (ID token)'),
                     subtitle: const Text(
                         'Token Firebase cấp khi đăng nhập, kiểm chữ ký RS256'),
-                    trailing: const Icon(Icons.chevron_right),
+                    trailing: const Icon(AppIcons.chevronRight),
                     onTap: () => Navigator.push(context,
                         MaterialPageRoute(builder: (_) => const JwtScreen())),
                   ),
@@ -209,7 +210,7 @@ class _AccountScreenState extends State<AccountScreen> {
                   child: Column(children: [
                     ListTile(
                       leading: const IconTile(
-                          Icons.cloud_upload_rounded, Color(0xFF29B6F6)),
+                          AppIcons.cloudUpload, Color(0xFF29B6F6)),
                       title: const Text('Sao lưu lên Firebase'),
                       subtitle: const Text('Đẩy toàn bộ nhóm, khoản chi lên Firestore'),
                       enabled: !_busy,
@@ -218,7 +219,7 @@ class _AccountScreenState extends State<AccountScreen> {
                     const Divider(height: 1),
                     ListTile(
                       leading: const IconTile(
-                          Icons.cloud_download_rounded, Color(0xFF16946A)),
+                          AppIcons.cloudDownload, Color(0xFF16946A)),
                       title: const Text('Khôi phục từ Firebase'),
                       subtitle: const Text('Lấy bản sao lưu về máy này'),
                       enabled: !_busy,
@@ -232,7 +233,7 @@ class _AccountScreenState extends State<AccountScreen> {
                       minimumSize: const Size.fromHeight(50),
                       foregroundColor: Theme.of(context).colorScheme.error),
                   onPressed: _busy ? null : _signOut,
-                  icon: const Icon(Icons.logout),
+                  icon: const Icon(AppIcons.logOut),
                   label: const Text('Đăng xuất'),
                 ),
               ],
