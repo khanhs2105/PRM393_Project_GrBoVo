@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'screens/home_screen.dart';
+import 'screens/root_shell.dart';
 import 'services/app_services.dart';
 import 'services/notification_service.dart';
 import 'theme.dart';
@@ -28,7 +28,7 @@ class ChiaTienApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
-      home: const HomeScreen(),
+      home: const RootShell(),
     );
   }
 }

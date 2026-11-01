@@ -17,7 +17,8 @@ const categoryStyle = <ExpenseCategory, (IconData, Color)>{
   ExpenseCategory.other: (Icons.receipt_long, Color(0xFF78909C)),
 };
 
-/// Khối nền gradient hồng cam (màu logo) có bóng mềm, chữ bên trong màu trắng.
+/// Khối nổi bật nền đen (nền xám đậm ở chế độ tối), chữ bên trong màu trắng.
+/// Dùng cho phần đầu màn chi tiết nhóm và màn thanh toán.
 class GradientPanel extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
@@ -26,7 +27,7 @@ class GradientPanel extends StatelessWidget {
     super.key,
     required this.child,
     this.padding = const EdgeInsets.all(20),
-    this.radius = 24,
+    this.radius = 20,
   });
 
   @override
@@ -35,8 +36,9 @@ class GradientPanel extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(radius),
-        gradient: AppTheme.brandGradient,
-        boxShadow: AppTheme.brandShadow(),
+        color: Theme.of(context).brightness == Brightness.light
+            ? AppTheme.ink
+            : AppTheme.zinc800,
       ),
       child: DefaultTextStyle.merge(
         style: const TextStyle(color: Colors.white),
@@ -61,8 +63,8 @@ class GlassStat extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.18),
-          borderRadius: BorderRadius.circular(14),
+          color: Colors.white.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(value,
@@ -112,10 +114,10 @@ class IconTile extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(size * 0.32),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(size * 0.28),
       ),
-      child: Icon(icon, color: color, size: size * 0.55),
+      child: Icon(icon, color: color, size: size * 0.5),
     );
   }
 }

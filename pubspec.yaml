@@ -32,3 +32,19 @@ flutter:
   assets:
     - assets/banks.json
     - assets/brand/chipin_logo.png
+  fonts:
+    - family: BeVietnamPro
+      fonts:
+        - asset: assets/fonts/BeVietnamPro-400.ttf
+          weight: 400
+        - asset: assets/fonts/BeVietnamPro-500.ttf
+          weight: 500
+        - asset: assets/fonts/BeVietnamPro-600.ttf
+          weight: 600
+        - asset: assets/fonts/BeVietnamPro-700.ttf
+          weight: 700
+        - asset: assets/fonts/BeVietnamPro-800.ttf
+          weight: 800
+    - family: Lucide
+      fonts:
+        - asset: assets/fonts/lucide.ttf
