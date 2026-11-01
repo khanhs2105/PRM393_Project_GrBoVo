@@ -7,6 +7,13 @@ tự tính ai nợ ai, rút gọn thành ít lượt chuyển nhất, hiện QR 
 
 ## Tính năng
 
+- **Đăng ký, đăng nhập, quên mật khẩu, đăng xuất** bằng Firebase Authentication (email + mật khẩu).
+  Mở lại app không phải đăng nhập lại
+- **Hồ sơ người dùng lưu trên Cloud Firestore** (`users/{uid}`): tên, email, gói, lần đăng nhập.
+  Luật bảo mật ở [firestore.rules](firestore.rules): mỗi người chỉ đọc/ghi dữ liệu của mình
+- **JWT**: màn "Xem JWT" hiện ID token của Firebase, giải mã header/payload, hạn dùng, và tự kiểm
+  chữ ký RS256 bằng khóa công khai của Google cùng các claim `iss`, `aud`, `exp`, `iat`, `sub`
+- **Sao lưu/khôi phục** toàn bộ dữ liệu nhóm lên Firestore để chuyển sang máy khác
 - Nhóm, thành viên, khoản chi với **4 cách chia** như Splitwise: chia đều, theo số tiền,
   theo phần (2:1:1), theo phần trăm. Phần lẻ chia theo phương pháp phần dư lớn nhất nên tổng luôn khớp
 - Danh mục (tự đoán theo nội dung hoặc tự chọn), ghi chú, ảnh hóa đơn
@@ -37,6 +44,9 @@ Thư mục `android/` đã có trong repo, chỉ cần:
 flutter pub get
 ```
 
+**Firebase**: làm theo [docs/firebase-setup.md](docs/firebase-setup.md) để tạo project và đặt file
+`android/app/google-services.json` (thiếu file này thì không build được).
+
 Cấu hình Android (quyền, desugaring) đã có sẵn trong repo, giải thích ở
 [docs/android-config.md](docs/android-config.md). Sau đó:
 
@@ -51,9 +61,9 @@ flutter build apk --release   # file ở build/app/outputs/flutter-apk/app-relea
 ```
 lib/
   models/     Group, Member, Expense, Settlement/Transfer, Activity, Bank
-  logic/      chia tiền, số dư, rút gọn nợ, thống kê, lọc, xuất CSV, VietQR, đọc QR EMVCo, gói troll (thuần Dart, có test)
-  data/       SQLite: tạo bảng, nâng cấp bản 1 lên 2, repository, dữ liệu mẫu
-  services/   App (khởi tạo dùng chung), NotificationService
+  logic/      JWT (tách, kiểm chữ ký RS256), kiểm ô nhập đăng nhập, chia tiền, số dư, rút gọn nợ, thống kê, lọc, xuất CSV, VietQR, đọc QR EMVCo, gói troll (thuần Dart, có test)
+  data/       SQLite, sao lưu/khôi phục lên Firestore: tạo bảng, nâng cấp bản 1 lên 2, repository, dữ liệu mẫu
+  services/   App (khởi tạo dùng chung), AuthService (Firebase Auth + Firestore), kiểm JWT, NotificationService
   screens/    các màn hình
   widgets/    widget dùng chung, lắc để chọn người
 assets/banks.json   danh sách ngân hàng (BIN theo NAPAS)

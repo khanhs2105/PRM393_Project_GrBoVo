@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../widgets/app_icons.dart';
 import '../widgets/common.dart';
 import '../widgets/ui.dart';
+import 'account_screen.dart';
 import 'group_detail_screen.dart';
 import 'group_form_screen.dart';
 import 'plans_screen.dart';
@@ -56,6 +57,19 @@ class _HomeScreenState extends State<HomeScreen> {
     _reload();
   }
 
+  /// "Chào buổi sáng, Huy 👋" khi đã có tên hiển thị.
+  String _greet() {
+    final name = App.auth?.currentUser?.displayName?.trim() ?? '';
+    final g = greeting();
+    return name.isEmpty ? g : g.replaceFirst(' 👋', ', $name 👋');
+  }
+
+  Future<void> _openAccount() async {
+    final changed = await Navigator.push<bool>(
+        context, MaterialPageRoute(builder: (_) => const AccountScreen()));
+    if (changed == true && mounted) _reload();
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -84,7 +98,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(greeting(),
+                      Text(_greet(),
                           style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
@@ -97,6 +111,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     ]),
               ),
             ]),
+            actions: [
+              IconButton(
+                tooltip: 'Tài khoản',
+                icon: const Icon(AppIcons.circleUser),
+                onPressed: _openAccount,
+              ),
+              const SizedBox(width: 4),
+            ],
           ),
           body: snap.hasError
               ? Center(child: Text('Lỗi: ${snap.error}'))

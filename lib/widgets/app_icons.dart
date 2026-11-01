@@ -86,4 +86,7 @@ class AppIcons {
   static const wallet = IconData(0xe204, fontFamily: _f); // wallet
   static const x = IconData(0xe1b2, fontFamily: _f); // x
   static const zap = IconData(0xe1b4, fontFamily: _f); // zap
+  static const cloudOff = IconData(0xe08d, fontFamily: _f); // cloud-off
+  static const rotateCcwKey = IconData(0xe650, fontFamily: _f); // rotate-ccw-key
+  static const shieldAlert = IconData(0xe1fe, fontFamily: _f); // shield-alert
 }

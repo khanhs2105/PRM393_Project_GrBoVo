@@ -20,6 +20,12 @@ dependencies:
   share_plus: ^13.0.0
   gal: ^2.3.0
   sensors_plus: ^7.0.0
+  # Đăng nhập + lưu hồ sơ người dùng (xem docs/firebase-setup.md)
+  firebase_core: ^5.1.0
+  firebase_auth: ^7.0.1
+  cloud_firestore: ^7.1.0
+  # SHA-256 để tự kiểm chữ ký JWT
+  crypto: ^3.0.6
 
 dev_dependencies:
   flutter_test:
