@@ -18,6 +18,7 @@ import '../models/settlement.dart';
 import '../services/app_services.dart';
 import '../services/notification_service.dart';
 import '../widgets/common.dart';
+import '../widgets/ui.dart';
 import 'member_form_screen.dart';
 
 /// Màn thanh toán một lượt chuyển: hiện QR VietQR, nhắc nợ, đánh dấu đã trả.
@@ -214,16 +215,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF1CC29F), Color(0xFF0E8F74)],
-              ),
-            ),
+          GradientPanel(
             child: Column(children: [
               Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 _Person(_from!.name),

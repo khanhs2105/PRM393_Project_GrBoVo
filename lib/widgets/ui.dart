@@ -17,6 +17,79 @@ const categoryStyle = <ExpenseCategory, (IconData, Color)>{
   ExpenseCategory.other: (Icons.receipt_long, Color(0xFF78909C)),
 };
 
+/// Khối nền gradient hồng cam (màu logo) có bóng mềm, chữ bên trong màu trắng.
+class GradientPanel extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final double radius;
+  const GradientPanel({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(20),
+    this.radius = 24,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        gradient: AppTheme.brandGradient,
+        boxShadow: AppTheme.brandShadow(),
+      ),
+      child: DefaultTextStyle.merge(
+        style: const TextStyle(color: Colors.white),
+        child: IconTheme.merge(
+          data: const IconThemeData(color: Colors.white),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// Ô số liệu nhỏ nền trắng mờ, đặt bên trong [GradientPanel].
+class GlassStat extends StatelessWidget {
+  final String label;
+  final String value;
+  const GlassStat({super.key, required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(value,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800)),
+          Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.85), fontSize: 12)),
+        ]),
+      ),
+    );
+  }
+}
+
+/// "Chào buổi sáng", "Chào buổi chiều"... theo giờ hiện tại.
+String greeting([DateTime? now]) {
+  final h = (now ?? DateTime.now()).hour;
+  if (h < 11) return 'Chào buổi sáng 👋';
+  if (h < 14) return 'Chào buổi trưa 👋';
+  if (h < 18) return 'Chào buổi chiều 👋';
+  return 'Chào buổi tối 👋';
+}
+
 /// Ô vuông bo góc có icon, nền nhạt cùng màu.
 class IconTile extends StatelessWidget {
   final IconData icon;
@@ -40,7 +113,7 @@ class IconTile extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(size * 0.3),
+        borderRadius: BorderRadius.circular(size * 0.32),
       ),
       child: Icon(icon, color: color, size: size * 0.55),
     );

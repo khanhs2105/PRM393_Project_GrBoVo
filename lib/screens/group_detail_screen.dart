@@ -277,27 +277,34 @@ class _GroupHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = summary;
     final perPerson = s.members.isEmpty ? 0 : s.totalSpent ~/ s.members.length;
-    final color = groupTypeColor(group.type);
-    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(children: [
-          IconTile(groupTypeIcon(group.type), color, size: 52),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Tổng chi', style: TextStyle(color: muted, fontSize: 13)),
-              Text(formatVnd(s.totalSpent),
-                  style: const TextStyle(
-                      fontSize: 22, fontWeight: FontWeight.w800)),
-              Text('Trung bình ${formatVnd(perPerson)}/người',
-                  style: TextStyle(color: muted, fontSize: 13)),
-            ]),
+    final muted = Colors.white.withValues(alpha: 0.85);
+    return GradientPanel(
+      padding: const EdgeInsets.all(16),
+      child: Row(children: [
+        Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.22),
+            borderRadius: BorderRadius.circular(16),
           ),
-          AvatarStack(s.members.map((m) => m.name).toList(), max: 3),
-        ]),
-      ),
+          child: Icon(groupTypeIcon(group.type), size: 28),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Tổng chi', style: TextStyle(color: muted, fontSize: 13)),
+            Text(formatVnd(s.totalSpent),
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800)),
+            Text('Trung bình ${formatVnd(perPerson)}/người',
+                style: TextStyle(color: muted, fontSize: 13)),
+          ]),
+        ),
+        AvatarStack(s.members.map((m) => m.name).toList(), max: 3),
+      ]),
     );
   }
 }
