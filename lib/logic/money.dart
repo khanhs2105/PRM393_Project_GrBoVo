@@ -131,3 +131,18 @@ String formatPercent(int basisPoints) {
   final f = frac.toString().padLeft(2, '0').replaceAll(RegExp(r'0$'), '');
   return '$whole,$f%';
 }
+
+/// Chia lại phần trăm: người trong [locked] giữ nguyên số đã gõ, phần còn lại
+/// của 100% chia đều cho [others] (phần lẻ cho người đầu tiên). Nếu [locked]
+/// đã vượt 100% thì [others] nhận 0%. Kết quả tính bằng phần vạn.
+Map<int, int> rebalancePercent({
+  required Map<int, int> locked,
+  required List<int> others,
+}) {
+  final result = {...locked};
+  if (others.isEmpty) return result;
+  final used = locked.values.fold<int>(0, (a, b) => a + b);
+  final left = used >= percentScale ? 0 : percentScale - used;
+  result.addAll(splitEqual(left, others, remainderTo: others.first));
+  return result;
+}
