@@ -116,6 +116,6 @@ String groupSummaryText({
       b.writeln('• ${name(t.fromId)} → ${name(t.toId)}: ${formatVnd(t.amount)}');
     }
   }
-  b.write('\nGửi từ Chipin');
+  b.write('\nGửi từ app Alo, Trả Tiền!');
   return b.toString();
 }

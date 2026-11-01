@@ -29,7 +29,7 @@ class ChiaTienApp extends StatelessWidget {
         onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
         child: child,
       ),
-      title: 'Chipin',
+      title: 'Alo, Trả Tiền!',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),

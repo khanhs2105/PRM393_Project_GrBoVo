@@ -101,7 +101,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
       await file.writeAsString('\uFEFF$csv');
       await SharePlus.instance.share(ShareParams(
         files: [XFile(file.path, mimeType: 'text/csv')],
-        subject: 'Chipin - ${g.name}',
+        subject: 'Alo, Trả Tiền! - ${g.name}',
       ));
     } catch (e) {
       if (mounted) showSnack(context, 'Không xuất được file: $e');

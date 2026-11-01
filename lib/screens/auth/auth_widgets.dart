@@ -55,7 +55,7 @@ class AuthScaffold extends StatelessWidget {
                           child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text('Chipin',
+                                const Text('Alo, Trả Tiền!',
                                     style: TextStyle(
                                         fontSize: 26,
                                         fontWeight: FontWeight.w800)),
