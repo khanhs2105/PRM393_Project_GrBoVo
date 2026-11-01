@@ -8,6 +8,7 @@ import '../services/app_services.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ui.dart';
+import 'account_screen.dart';
 import 'activity_screen.dart';
 import 'group_detail_screen.dart';
 import 'group_form_screen.dart';
@@ -53,6 +54,19 @@ class _HomeScreenState extends State<HomeScreen> {
     _reload();
   }
 
+  /// "Chào buổi sáng, Huy 👋" khi đã có tên hiển thị.
+  String _greet() {
+    final name = App.auth?.currentUser?.displayName?.trim() ?? '';
+    final g = greeting();
+    return name.isEmpty ? g : g.replaceFirst(' 👋', ', $name 👋');
+  }
+
+  Future<void> _openAccount() async {
+    final changed = await Navigator.push<bool>(
+        context, MaterialPageRoute(builder: (_) => const AccountScreen()));
+    if (changed == true && mounted) _reload();
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<(Group, GroupSummary)>>(
@@ -72,6 +86,11 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
             actions: [
+              IconButton(
+                tooltip: 'Tài khoản',
+                icon: const Icon(Icons.account_circle_outlined),
+                onPressed: _openAccount,
+              ),
               IconButton(
                 tooltip: 'Hoạt động',
                 icon: const Icon(Icons.history_rounded),
@@ -113,7 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               Padding(
                                 padding:
                                     const EdgeInsets.fromLTRB(4, 0, 4, 10),
-                                child: Text(greeting(),
+                                child: Text(_greet(),
                                     style: TextStyle(
                                         fontSize: 15,
                                         color: Theme.of(context)
