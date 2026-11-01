@@ -18,6 +18,12 @@ class ChiaTienApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      // Chạm vào chỗ trống bất kỳ ngoài ô nhập thì ẩn bàn phím.
+      builder: (context, child) => GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        child: child,
+      ),
       title: 'Chipin',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
