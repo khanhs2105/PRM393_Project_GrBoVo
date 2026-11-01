@@ -20,6 +20,7 @@ import '../services/notification_service.dart';
 import '../widgets/common.dart';
 import '../widgets/ui.dart';
 import 'member_form_screen.dart';
+import '../widgets/app_icons.dart';
 
 /// Màn thanh toán một lượt chuyển: hiện QR VietQR, nhắc nợ, đánh dấu đã trả.
 class PaymentScreen extends StatefulWidget {
@@ -109,23 +110,23 @@ class _PaymentScreenState extends State<PaymentScreen> {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const ListTile(title: Text('Nhắc nợ lúc nào?')),
           ListTile(
-            leading: const Icon(Icons.timer_outlined),
+            leading: const Icon(AppIcons.timer),
             title: const Text('1 phút nữa (để thử)'),
             onTap: () =>
                 Navigator.pop(ctx, DateTime.now().add(const Duration(minutes: 1))),
           ),
           ListTile(
-            leading: const Icon(Icons.nightlight_outlined),
+            leading: const Icon(AppIcons.moon),
             title: Text('20:00 ${tonight.day == now.day ? 'tối nay' : 'tối mai'}'),
             onTap: () => Navigator.pop(ctx, tonight),
           ),
           ListTile(
-            leading: const Icon(Icons.wb_sunny_outlined),
+            leading: const Icon(AppIcons.sun),
             title: const Text('9:00 sáng mai'),
             onTap: () => Navigator.pop(ctx, tomorrow),
           ),
           ListTile(
-            leading: const Icon(Icons.date_range_outlined),
+            leading: const Icon(AppIcons.calendarRange),
             title: const Text('3 ngày nữa'),
             onTap: () => Navigator.pop(ctx, now.add(const Duration(days: 3))),
           ),
@@ -221,7 +222,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 _Person(_from!.name),
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 20),
-                  child: Icon(Icons.arrow_forward_rounded,
+                  child: Icon(AppIcons.arrowRight,
                       color: Colors.white, size: 28),
                 ),
                 _Person(to.name),
@@ -252,7 +253,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                               builder: (_) => MemberFormScreen(member: to)));
                       _load();
                     },
-                    icon: const Icon(Icons.account_balance),
+                    icon: const Icon(AppIcons.landmark),
                     label: const Text('Thêm tài khoản'),
                   ),
                 ]),
@@ -289,13 +290,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
             const SizedBox(height: 8),
             ListTile(
               dense: true,
-              leading: const Icon(Icons.account_balance),
+              leading: const Icon(AppIcons.landmark),
               title: Text(bank?.shortName ?? to.bankBin!),
               subtitle: Text('${to.accountNo}'
                   '${to.accountName == null ? '' : ' · ${to.accountName}'}'),
               trailing: IconButton(
                 tooltip: 'Copy số tài khoản',
-                icon: const Icon(Icons.copy),
+                icon: const Icon(AppIcons.copy),
                 onPressed: () {
                   Clipboard.setData(ClipboardData(text: to.accountNo!));
                   showSnack(context, 'Đã copy số tài khoản');
@@ -304,14 +305,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
             ),
             ListTile(
               dense: true,
-              leading: const Icon(Icons.notes),
+              leading: const Icon(AppIcons.notebookPen),
               title: const Text('Nội dung chuyển khoản'),
               subtitle: Text(_note),
             ),
             const SizedBox(height: 8),
             OutlinedButton.icon(
               onPressed: _saveQr,
-              icon: const Icon(Icons.download),
+              icon: const Icon(AppIcons.download),
               label: const Text('Lưu QR vào thư viện ảnh'),
             ),
           ],
@@ -322,7 +323,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: _share,
-                  icon: const Icon(Icons.campaign_outlined),
+                  icon: const Icon(AppIcons.megaphone),
                   label: Text(plan == Plan.doiNoThue ? 'Đòi nợ 😈' : 'Nhắc nợ'),
                 ),
               ),
@@ -330,7 +331,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: _scheduleReminder,
-                  icon: const Icon(Icons.alarm_add_outlined),
+                  icon: const Icon(AppIcons.alarmClockPlus),
                   label: const Text('Hẹn nhắc'),
                 ),
               ),
@@ -343,7 +344,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           padding: const EdgeInsets.all(16),
           child: FilledButton.icon(
             onPressed: _markPaid,
-            icon: const Icon(Icons.check),
+            icon: const Icon(AppIcons.check),
             label: const Text('Đã trả'),
           ),
         ),

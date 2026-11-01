@@ -17,6 +17,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ui.dart';
 import 'plans_screen.dart';
+import '../widgets/app_icons.dart';
 
 /// Thêm hoặc sửa một khoản chi.
 ///
@@ -424,7 +425,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                           ? () => setState(
                               () => _parts[m.id!] = (_parts[m.id] ?? 1) - 1)
                           : null,
-                      icon: const Icon(Icons.remove_circle_outline),
+                      icon: const Icon(AppIcons.circleMinus),
                     ),
                     SizedBox(
                       width: 28,
@@ -441,7 +442,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                           ? () => setState(
                               () => _parts[m.id!] = (_parts[m.id] ?? 1) + 1)
                           : null,
-                      icon: const Icon(Icons.add_circle_outline),
+                      icon: const Icon(AppIcons.circlePlus),
                     ),
                   ]),
                   preview?[m.id],
@@ -482,7 +483,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                 alignment: Alignment.centerRight,
                 child: TextButton.icon(
                   onPressed: _fillEqualPercent,
-                  icon: const Icon(Icons.balance_rounded, size: 18),
+                  icon: const Icon(AppIcons.scale, size: 18),
                   label: const Text('Chia đều 100%'),
                 ),
               ),
@@ -506,7 +507,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
         actions: [
           if (_isEdit)
             IconButton(
-                onPressed: _delete, icon: const Icon(Icons.delete_outline)),
+                onPressed: _delete, icon: const Icon(AppIcons.trash2)),
         ],
       ),
       body: Form(
@@ -629,7 +630,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
               clipBehavior: Clip.antiAlias,
               child: Column(children: [
                 ListTile(
-                  leading: const Icon(Icons.event_rounded),
+                  leading: const Icon(AppIcons.calendar),
                   title: const Text('Ngày'),
                   trailing: Text(formatDate(_date),
                       style: const TextStyle(fontWeight: FontWeight.w600)),
@@ -652,7 +653,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                     maxLines: 4,
                     textCapitalization: TextCapitalization.sentences,
                     decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.notes_rounded),
+                      prefixIcon: Icon(AppIcons.notebookPen),
                       hintText: 'Ghi chú (không bắt buộc)',
                     ),
                   ),
@@ -661,7 +662,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                 ValueListenableBuilder<Plan>(
                   valueListenable: App.plan,
                   builder: (context, plan, _) => ListTile(
-                    leading: const Icon(Icons.receipt_long_rounded),
+                    leading: const Icon(AppIcons.receipt),
                     title: const Text('Ảnh hóa đơn'),
                     subtitle: plan.canAttachReceipt
                         ? null
@@ -670,17 +671,17 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                       if (!plan.canAttachReceipt)
                         const Padding(
                           padding: EdgeInsets.only(right: 4),
-                          child: Icon(Icons.lock_outline, size: 18),
+                          child: Icon(AppIcons.lock, size: 18),
                         ),
                       IconButton(
                         tooltip: 'Chụp ảnh',
                         onPressed: () => _pickReceipt(ImageSource.camera),
-                        icon: const Icon(Icons.photo_camera_outlined),
+                        icon: const Icon(AppIcons.camera),
                       ),
                       IconButton(
                         tooltip: 'Chọn từ thư viện',
                         onPressed: () => _pickReceipt(ImageSource.gallery),
-                        icon: const Icon(Icons.photo_library_outlined),
+                        icon: const Icon(AppIcons.images),
                       ),
                     ]),
                   ),
@@ -701,7 +702,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                         top: 4,
                         child: IconButton.filledTonal(
                           onPressed: () => setState(() => _receiptPath = null),
-                          icon: const Icon(Icons.close),
+                          icon: const Icon(AppIcons.x),
                         ),
                       ),
                     ]),
@@ -716,7 +717,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           child: FilledButton.icon(
             onPressed: _save,
-            icon: const Icon(Icons.check_rounded),
+            icon: const Icon(AppIcons.check),
             label: Text(_isEdit ? 'Lưu thay đổi' : 'Thêm khoản chi'),
           ),
         ),

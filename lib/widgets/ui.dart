@@ -4,17 +4,18 @@ import '../logic/categories.dart';
 import '../logic/money.dart';
 import '../theme.dart';
 import 'common.dart';
+import 'app_icons.dart';
 
 /// Icon và màu cho từng loại khoản chi.
 const categoryStyle = <ExpenseCategory, (IconData, Color)>{
-  ExpenseCategory.food: (Icons.restaurant, Color(0xFFFF8A3D)),
-  ExpenseCategory.drink: (Icons.local_cafe, Color(0xFF8D6E63)),
-  ExpenseCategory.rent: (Icons.home_rounded, Color(0xFF5C6BC0)),
-  ExpenseCategory.utilities: (Icons.bolt, Color(0xFFFFB300)),
-  ExpenseCategory.transport: (Icons.directions_car, Color(0xFF29B6F6)),
-  ExpenseCategory.shopping: (Icons.shopping_bag, Color(0xFFEC407A)),
-  ExpenseCategory.fun: (Icons.celebration, Color(0xFFAB47BC)),
-  ExpenseCategory.other: (Icons.receipt_long, Color(0xFF78909C)),
+  ExpenseCategory.food: (AppIcons.utensils, Color(0xFFFF8A3D)),
+  ExpenseCategory.drink: (AppIcons.coffee, Color(0xFF8D6E63)),
+  ExpenseCategory.rent: (AppIcons.house, Color(0xFF5C6BC0)),
+  ExpenseCategory.utilities: (AppIcons.zap, Color(0xFFFFB300)),
+  ExpenseCategory.transport: (AppIcons.car, Color(0xFF29B6F6)),
+  ExpenseCategory.shopping: (AppIcons.shoppingBag, Color(0xFFEC407A)),
+  ExpenseCategory.fun: (AppIcons.partyPopper, Color(0xFFAB47BC)),
+  ExpenseCategory.other: (AppIcons.receipt, Color(0xFF78909C)),
 };
 
 /// Khối nổi bật nền đen (nền xám đậm ở chế độ tối), chữ bên trong màu trắng.

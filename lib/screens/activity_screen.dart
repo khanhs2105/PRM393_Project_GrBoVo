@@ -5,6 +5,7 @@ import '../models/activity.dart';
 import '../services/app_services.dart';
 import '../theme.dart';
 import '../widgets/ui.dart';
+import '../widgets/app_icons.dart';
 
 /// Lịch sử hoạt động, giống tab "Activity" của Splitwise.
 /// [groupId] null: mọi nhóm (mở từ màn chính).
@@ -14,18 +15,18 @@ class ActivityScreen extends StatelessWidget {
   const ActivityScreen({super.key, this.groupId, this.groupName});
 
   static (IconData, Color) _style(String kind) => switch (kind) {
-        ActivityKind.expenseAdded => (Icons.add_rounded, AppTheme.seed),
-        ActivityKind.expenseEdited => (Icons.edit_rounded, Colors.blue),
+        ActivityKind.expenseAdded => (AppIcons.plus, AppTheme.seed),
+        ActivityKind.expenseEdited => (AppIcons.pencil, Colors.blue),
         ActivityKind.expenseDeleted ||
         ActivityKind.memberDeleted ||
         ActivityKind.groupDeleted =>
-          (Icons.delete_outline_rounded, AppTheme.owe),
-        ActivityKind.settled => (Icons.check_rounded, AppTheme.owed),
-        ActivityKind.settleUndone => (Icons.undo_rounded, Colors.orange),
+          (AppIcons.trash2, AppTheme.owe),
+        ActivityKind.settled => (AppIcons.check, AppTheme.owed),
+        ActivityKind.settleUndone => (AppIcons.undo2, Colors.orange),
         ActivityKind.memberAdded ||
         ActivityKind.memberEdited =>
-          (Icons.person_rounded, Colors.indigo),
-        _ => (Icons.groups_rounded, Colors.blueGrey),
+          (AppIcons.user, Colors.indigo),
+        _ => (AppIcons.users, Colors.blueGrey),
       };
 
   @override
@@ -43,7 +44,7 @@ class ActivityScreen extends StatelessWidget {
           }
           if (items.isEmpty) {
             return const EmptyState(
-              icon: Icons.history_rounded,
+              icon: AppIcons.history,
               title: 'Chưa có hoạt động',
               message:
                   'Mỗi lần thêm, sửa, xóa khoản chi hay trả tiền sẽ được ghi lại ở đây.',

@@ -3,6 +3,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../logic/emv_qr_parser.dart';
 import '../widgets/common.dart';
+import '../widgets/app_icons.dart';
 
 /// Quét QR ngân hàng bằng camera. Quét được thì trả về [BankAccountQr].
 class QrScanScreen extends StatefulWidget {
@@ -55,7 +56,7 @@ class _QrScanScreenState extends State<QrScanScreen> {
         actions: [
           IconButton(
             onPressed: () => _controller.toggleTorch(),
-            icon: const Icon(Icons.flash_on),
+            icon: const Icon(AppIcons.zap),
           ),
         ],
       ),

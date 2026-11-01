@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../logic/plans.dart';
 import '../services/app_services.dart';
+import '../widgets/app_icons.dart';
 
 /// Màn chọn gói. Không có thanh toán thật, nút mua sẽ chạy trốn vài lần
 /// rồi mới chịu cho bấm.
@@ -82,7 +83,7 @@ class _PlanCard extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Icon(Icons.check, size: 18),
+                const Icon(AppIcons.check, size: 18),
                 const SizedBox(width: 6),
                 Expanded(child: Text(perk)),
               ]),
@@ -166,7 +167,7 @@ class _RunawayBuyButtonState extends State<_RunawayBuyButton> {
       curve: Curves.easeOutBack,
       child: FilledButton.icon(
         onPressed: _onPressed,
-        icon: const Icon(Icons.shopping_cart_outlined),
+        icon: const Icon(AppIcons.shoppingCart),
         label: Text('Mua ${widget.plan.title}'),
       ),
     );

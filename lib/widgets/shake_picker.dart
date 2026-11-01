@@ -9,6 +9,7 @@ import '../logic/plans.dart';
 import '../models/member.dart';
 import '../screens/plans_screen.dart';
 import 'common.dart';
+import 'app_icons.dart';
 
 /// "Lắc để chọn người bao": dùng gia tốc kế, lắc điện thoại thì random
 /// một thành viên. Chỉ có ở gói Đòi Nợ Thuê.
@@ -86,7 +87,7 @@ class _ShakeDialogState extends State<_ShakeDialog> {
       title: const Text('Ai bao bữa này?'),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
         if (_current == null) ...[
-          const Icon(Icons.vibration, size: 64),
+          const Icon(AppIcons.vibrate, size: 64),
           const SizedBox(height: 12),
           const Text('Lắc mạnh điện thoại đi!', textAlign: TextAlign.center),
         ] else ...[

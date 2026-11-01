@@ -5,6 +5,7 @@ import '../models/group.dart';
 import '../models/member.dart';
 import '../services/app_services.dart';
 import '../widgets/common.dart';
+import '../widgets/app_icons.dart';
 
 /// Tạo nhóm mới (kèm thành viên) hoặc sửa tên/loại của nhóm có sẵn.
 class GroupFormScreen extends StatefulWidget {
@@ -108,10 +109,10 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
                     textCapitalization: TextCapitalization.words,
                     decoration: InputDecoration(
                       labelText: i == 0 ? 'Bạn (người giữ máy)' : 'Thành viên ${i + 1}',
-                      prefixIcon: const Icon(Icons.person_outline),
+                      prefixIcon: const Icon(AppIcons.user),
                       suffixIcon: _memberControllers.length > 2
                           ? IconButton(
-                              icon: const Icon(Icons.close),
+                              icon: const Icon(AppIcons.x),
                               onPressed: () => setState(() =>
                                   _memberControllers.removeAt(i).dispose()),
                             )
@@ -122,7 +123,7 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
               TextButton.icon(
                 onPressed: () =>
                     setState(() => _memberControllers.add(TextEditingController())),
-                icon: const Icon(Icons.add),
+                icon: const Icon(AppIcons.plus),
                 label: const Text('Thêm người'),
               ),
               const Text(
