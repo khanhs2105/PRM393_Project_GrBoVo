@@ -5,9 +5,12 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../logic/categories.dart';
 import '../logic/money.dart';
 import '../logic/plans.dart';
+import '../models/activity.dart';
 import '../models/expense.dart';
+import '../models/group.dart';
 import '../models/member.dart';
 import '../services/app_services.dart';
 import '../theme.dart';
@@ -16,6 +19,9 @@ import '../widgets/ui.dart';
 import 'plans_screen.dart';
 
 /// Thêm hoặc sửa một khoản chi.
+///
+/// Có 4 cách chia giống Splitwise: chia đều, theo số tiền, theo phần
+/// (ví dụ 2:1:1), theo phần trăm.
 class ExpenseFormScreen extends StatefulWidget {
   final int groupId;
   final Expense? expense;
@@ -30,37 +36,68 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   late final _title = TextEditingController(text: widget.expense?.title);
   late final _amount = TextEditingController(
       text: widget.expense == null ? '' : '${widget.expense!.amount}');
+  late final _note = TextEditingController(text: widget.expense?.note);
 
+  Group? _group;
   List<Member> _members = [];
   int? _paidBy;
   final Set<int> _selected = {};
-  late String _splitType = widget.expense?.splitType ?? 'equal';
+  late String _splitType = widget.expense?.splitType ?? SplitType.equal;
+
+  /// Ô nhập số tiền từng người (kiểu theo số tiền).
   final Map<int, TextEditingController> _exact = {};
+
+  /// Ô nhập % từng người (kiểu theo %).
+  final Map<int, TextEditingController> _percent = {};
+
+  /// Số phần của từng người (kiểu theo phần).
+  final Map<int, int> _parts = {};
+
+  /// Danh mục người dùng tự chọn. null: đoán theo nội dung.
+  late ExpenseCategory? _category =
+      categoryFromName(widget.expense?.category);
   String? _receiptPath;
   late DateTime _date = widget.expense?.date ?? DateTime.now();
 
   bool get _isEdit => widget.expense != null;
   int get _amountValue => parseVnd(_amount.text) ?? 0;
+  ExpenseCategory get _shownCategory => _category ?? categorize(_title.text);
 
   @override
   void initState() {
     super.initState();
     _amount.addListener(() => setState(() {}));
-    App.groups.members(widget.groupId).then((members) {
-      final e = widget.expense;
-      setState(() {
-        _members = members;
-        _paidBy = e?.paidBy ?? members.first.id;
-        _selected.addAll(e?.shares.keys ?? members.map((m) => m.id!));
-        for (final m in members) {
-          _exact[m.id!] = TextEditingController(
-              text: e?.splitType == 'exact' && e!.shares.containsKey(m.id)
-                  ? '${e.shares[m.id]}'
-                  : '');
-          _exact[m.id!]!.addListener(() => setState(() {}));
-        }
-        _receiptPath = e?.receiptPath;
-      });
+    _title.addListener(() => setState(() {}));
+    _load();
+  }
+
+  Future<void> _load() async {
+    final group = await App.groups.getById(widget.groupId);
+    final members = await App.groups.members(widget.groupId);
+    if (!mounted) return;
+    final e = widget.expense;
+    setState(() {
+      _group = group;
+      _members = members;
+      _paidBy = e?.paidBy ?? members.first.id;
+      _selected.addAll(e?.shares.keys ?? members.map((m) => m.id!));
+      for (final m in members) {
+        final id = m.id!;
+        _exact[id] = TextEditingController(
+            text: e?.splitType == SplitType.exact && e!.shares.containsKey(id)
+                ? '${e.shares[id]}'
+                : '')
+          ..addListener(() => setState(() {}));
+        _percent[id] = TextEditingController(
+            text: e?.splitType == SplitType.percent && e!.weights[id] != null
+                ? formatPercent(e.weights[id]!).replaceAll('%', '')
+                : '')
+          ..addListener(() => setState(() {}));
+        _parts[id] = e?.splitType == SplitType.shares
+            ? (e!.weights[id] ?? 1)
+            : 1;
+      }
+      _receiptPath = e?.receiptPath;
     });
   }
 
@@ -68,23 +105,78 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   void dispose() {
     _title.dispose();
     _amount.dispose();
-    for (final c in _exact.values) {
+    _note.dispose();
+    for (final c in [..._exact.values, ..._percent.values]) {
       c.dispose();
     }
     super.dispose();
   }
 
-  Map<int, int> _buildShares() {
-    if (_splitType == 'equal') {
-      return splitEqual(_amountValue, _selected.toList(), remainderTo: _paidBy);
-    }
-    return {
-      for (final id in _selected) id: parseVnd(_exact[id]!.text) ?? 0,
-    };
-  }
+  // ---------- Tính phần từng người ----------
 
   int get _exactTotal =>
       _selected.fold(0, (sum, id) => sum + (parseVnd(_exact[id]!.text) ?? 0));
+
+  Map<int, int> get _percentWeights => {
+        for (final id in _selected) id: parsePercent(_percent[id]!.text) ?? 0,
+      };
+
+  int get _percentTotal => _percentWeights.values.fold(0, (a, b) => a + b);
+
+  Map<int, int> get _partWeights => {
+        for (final id in _selected) id: _parts[id] ?? 1,
+      };
+
+  int get _partsTotal => _partWeights.values.fold(0, (a, b) => a + b);
+
+  /// Phần từng người theo cách chia đang chọn, null nếu chưa chia được.
+  Map<int, int>? _preview() {
+    if (_selected.isEmpty || _amountValue <= 0) return null;
+    switch (_splitType) {
+      case SplitType.equal:
+        return splitEqual(_amountValue, _selected.toList(),
+            remainderTo: _paidBy);
+      case SplitType.exact:
+        return {for (final id in _selected) id: parseVnd(_exact[id]!.text) ?? 0};
+      case SplitType.shares:
+        if (_partsTotal == 0) return null;
+        return splitByWeights(_partWeights, _amountValue, remainderTo: _paidBy);
+      default:
+        if (_percentTotal == 0) return null;
+        return splitByWeights(_percentWeights, _amountValue,
+            remainderTo: _paidBy);
+    }
+  }
+
+  /// Báo lỗi nếu cách chia chưa hợp lệ, null là được.
+  String? _splitError() {
+    if (_selected.isEmpty) return 'Chọn ít nhất 1 người tham gia';
+    switch (_splitType) {
+      case SplitType.exact:
+        if (_exactTotal != _amountValue) {
+          return 'Tổng các phần (${formatVnd(_exactTotal)}) phải bằng ${formatVnd(_amountValue)}';
+        }
+      case SplitType.shares:
+        if (_partsTotal == 0) return 'Phải có ít nhất 1 phần';
+      case SplitType.percent:
+        if (_percentTotal != percentScale) {
+          return 'Tổng phải đúng 100% (đang ${formatPercent(_percentTotal)})';
+        }
+    }
+    return null;
+  }
+
+  /// Chia đều 100% cho những người đang chọn.
+  void _fillEqualPercent() {
+    if (_selected.isEmpty) return;
+    final ids = _members.map((m) => m.id!).where(_selected.contains).toList();
+    final each = splitEqual(percentScale, ids, remainderTo: ids.first);
+    for (final id in ids) {
+      _percent[id]!.text = formatPercent(each[id]!).replaceAll('%', '');
+    }
+  }
+
+  // ---------- Hành động ----------
 
   Future<void> _pickReceipt(ImageSource source) async {
     if (!App.plan.value.canAttachReceipt) {
@@ -111,19 +203,28 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     setState(() => _receiptPath = dest);
   }
 
+  String _memberName(int id) =>
+      _members.firstWhere((m) => m.id == id).name;
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_selected.isEmpty) {
-      showSnack(context, 'Chọn ít nhất 1 người tham gia');
+    final error = _splitError();
+    if (error != null) {
+      showSnack(context, error);
       return;
     }
-    final shares = _buildShares();
-    if (!sharesMatchTotal(_amountValue, shares)) {
-      showSnack(context,
-          'Tổng các phần (${formatVnd(_exactTotal)}) phải bằng ${formatVnd(_amountValue)}');
-      return;
-    }
-    await App.expenses.save(Expense(
+    final shares = _preview()!;
+    final weights = switch (_splitType) {
+      SplitType.shares => {
+          for (final id in shares.keys) id: _partWeights[id]!,
+        },
+      SplitType.percent => {
+          for (final id in shares.keys) id: _percentWeights[id]!,
+        },
+      _ => <int, int>{},
+    };
+    final note = _note.text.trim();
+    final expense = Expense(
       id: widget.expense?.id,
       groupId: widget.groupId,
       title: _title.text.trim(),
@@ -131,9 +232,23 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
       paidBy: _paidBy!,
       splitType: _splitType,
       shares: shares,
+      weights: weights,
+      category: _category?.name,
+      note: note.isEmpty ? null : note,
       receiptPath: _receiptPath,
       date: _date,
-    ));
+    );
+    await App.expenses.save(expense);
+    await App.activities.log(
+      groupId: widget.groupId,
+      groupName: _group?.name ?? '',
+      kind: _isEdit ? ActivityKind.expenseEdited : ActivityKind.expenseAdded,
+      message: _isEdit
+          ? 'Sửa khoản chi "${expense.title}"'
+          : 'Thêm "${expense.title}", ${_memberName(expense.paidBy)} trả, '
+              'chia ${shares.length} người',
+      amount: expense.amount,
+    );
     if (mounted) Navigator.pop(context, true);
   }
 
@@ -143,11 +258,22 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
         ok: 'Xóa');
     if (!ok) return;
     await App.expenses.delete(widget.expense!.id!);
+    await App.activities.log(
+      groupId: widget.groupId,
+      groupName: _group?.name ?? '',
+      kind: ActivityKind.expenseDeleted,
+      message: 'Xóa khoản chi "${widget.expense!.title}"',
+      amount: widget.expense!.amount,
+    );
     if (mounted) Navigator.pop(context, true);
   }
 
-  Widget _avatarChip(Member m, {required bool selected,
-      required ValueChanged<bool> onSelected, bool filter = false}) {
+  // ---------- Giao diện ----------
+
+  Widget _avatarChip(Member m,
+      {required bool selected,
+      required ValueChanged<bool> onSelected,
+      bool filter = false}) {
     final avatar = MemberAvatar(m.name, radius: 12);
     return filter
         ? FilterChip(
@@ -166,22 +292,221 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
           );
   }
 
+  Widget _categoryPicker() {
+    final shown = _shownCategory;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(children: [
+        for (final c in ExpenseCategory.values)
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              avatar: Icon(categoryStyle[c]!.$1,
+                  size: 18, color: categoryStyle[c]!.$2),
+              label: Text(categoryLabels[c]!),
+              selected: shown == c,
+              showCheckmark: false,
+              onSelected: (_) => setState(() => _category = c),
+            ),
+          ),
+      ]),
+    );
+  }
+
+  /// Một dòng thành viên trong bảng chia (theo số tiền / phần / %).
+  Widget _splitRow(Member m, Widget input, int? share) {
+    final id = m.id!;
+    final selected = _selected.contains(id);
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      child: Row(children: [
+        Checkbox(
+          value: selected,
+          onChanged: (v) =>
+              setState(() => v! ? _selected.add(id) : _selected.remove(id)),
+        ),
+        MemberAvatar(m.name, radius: 14),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(m.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+            if (share != null && _splitType != SplitType.exact)
+              Text(formatVnd(share),
+                  style: TextStyle(color: muted, fontSize: 12)),
+          ]),
+        ),
+        input,
+      ]),
+    );
+  }
+
+  Widget _splitTotalRow(String label, String value, bool ok) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Row(children: [
+        Expanded(child: Text(label)),
+        Text(value,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: ok ? AppTheme.owed : AppTheme.owe,
+            )),
+      ]),
+    );
+  }
+
+  Widget _splitEditor(Map<int, int>? preview) {
+    final scheme = Theme.of(context).colorScheme;
+    switch (_splitType) {
+      case SplitType.equal:
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final m in _members)
+              _avatarChip(m,
+                  filter: true,
+                  selected: _selected.contains(m.id),
+                  onSelected: (v) => setState(() =>
+                      v ? _selected.add(m.id!) : _selected.remove(m.id))),
+          ]),
+          if (preview != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Text(
+                'Mỗi người ${formatVnd(_amountValue ~/ _selected.length)}'
+                '${_amountValue % _selected.length == 0 ? '' : ' (phần lẻ ${_amountValue % _selected.length} ₫ tính cho người trả)'}',
+                style: TextStyle(color: scheme.onSurfaceVariant),
+              ),
+            ),
+        ]);
+
+      case SplitType.exact:
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(children: [
+              for (final m in _members)
+                _splitRow(
+                  m,
+                  SizedBox(
+                    width: 130,
+                    child: TextField(
+                      controller: _exact[m.id],
+                      enabled: _selected.contains(m.id),
+                      textAlign: TextAlign.end,
+                      decoration: const InputDecoration(
+                          isDense: true, hintText: '0', suffixText: '₫'),
+                    ),
+                  ),
+                  null,
+                ),
+              _splitTotalRow(
+                'Đã chia',
+                '${formatVnd(_exactTotal)} / ${formatVnd(_amountValue)}',
+                _exactTotal == _amountValue,
+              ),
+            ]),
+          ),
+        );
+
+      case SplitType.shares:
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(children: [
+              for (final m in _members)
+                _splitRow(
+                  m,
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      onPressed: _selected.contains(m.id) &&
+                              (_parts[m.id] ?? 1) > 1
+                          ? () => setState(
+                              () => _parts[m.id!] = (_parts[m.id] ?? 1) - 1)
+                          : null,
+                      icon: const Icon(Icons.remove_circle_outline),
+                    ),
+                    SizedBox(
+                      width: 28,
+                      child: Text(
+                        _selected.contains(m.id) ? '${_parts[m.id] ?? 1}' : '0',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      onPressed: _selected.contains(m.id)
+                          ? () => setState(
+                              () => _parts[m.id!] = (_parts[m.id] ?? 1) + 1)
+                          : null,
+                      icon: const Icon(Icons.add_circle_outline),
+                    ),
+                  ]),
+                  preview?[m.id],
+                ),
+              _splitTotalRow('Tổng số phần', '$_partsTotal phần', _partsTotal > 0),
+            ]),
+          ),
+        );
+
+      default:
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(children: [
+              for (final m in _members)
+                _splitRow(
+                  m,
+                  SizedBox(
+                    width: 90,
+                    child: TextField(
+                      controller: _percent[m.id],
+                      enabled: _selected.contains(m.id),
+                      textAlign: TextAlign.end,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                          isDense: true, hintText: '0', suffixText: '%'),
+                    ),
+                  ),
+                  preview?[m.id],
+                ),
+              _splitTotalRow(
+                'Tổng',
+                '${formatPercent(_percentTotal)} / 100%',
+                _percentTotal == percentScale,
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: _fillEqualPercent,
+                  icon: const Icon(Icons.balance_rounded, size: 18),
+                  label: const Text('Chia đều 100%'),
+                ),
+              ),
+            ]),
+          ),
+        );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_members.isEmpty) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     final scheme = Theme.of(context).colorScheme;
-    final equalPreview = _selected.isEmpty || _amountValue == 0
-        ? null
-        : splitEqual(_amountValue, _selected.toList(), remainderTo: _paidBy);
+    final preview = _preview();
 
     return Scaffold(
       appBar: AppBar(
         title: Text(_isEdit ? 'Sửa khoản chi' : 'Thêm khoản chi'),
         actions: [
           if (_isEdit)
-            IconButton(onPressed: _delete, icon: const Icon(Icons.delete_outline)),
+            IconButton(
+                onPressed: _delete, icon: const Icon(Icons.delete_outline)),
         ],
       ),
       body: Form(
@@ -195,10 +520,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
                 child: Column(children: [
                   Row(children: [
-                    ValueListenableBuilder<TextEditingValue>(
-                      valueListenable: _title,
-                      builder: (context, v, _) => IconTile.category(v.text),
-                    ),
+                    IconTile.forCategory(_shownCategory),
                     const SizedBox(width: 12),
                     Expanded(
                       child: TextFormField(
@@ -236,7 +558,9 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                     ),
                     validator: (v) {
                       final x = parseVnd(v ?? '');
-                      return (x == null || x <= 0) ? 'Số tiền không hợp lệ' : null;
+                      return (x == null || x <= 0)
+                          ? 'Số tiền không hợp lệ'
+                          : null;
                     },
                   ),
                   Wrap(
@@ -252,6 +576,16 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                 ]),
               ),
             ),
+            SectionHeader('Danh mục',
+                trailing: _category == null
+                    ? Text('Tự đoán theo nội dung',
+                        style: TextStyle(
+                            color: scheme.onSurfaceVariant, fontSize: 11))
+                    : TextButton(
+                        onPressed: () => setState(() => _category = null),
+                        child: const Text('Tự đoán'),
+                      )),
+            _categoryPicker(),
             const SectionHeader('Ai trả tiền?'),
             Wrap(spacing: 8, runSpacing: 8, children: [
               for (final m in _members)
@@ -269,88 +603,27 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                       ? 'Bỏ chọn hết'
                       : 'Chọn tất cả'),
                 )),
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(
-                    value: 'equal',
-                    icon: Icon(Icons.drag_handle_rounded),
-                    label: Text('Chia đều')),
-                ButtonSegment(
-                    value: 'exact',
-                    icon: Icon(Icons.edit_note_rounded),
-                    label: Text('Theo số tiền')),
-              ],
-              selected: {_splitType},
-              onSelectionChanged: (v) => setState(() => _splitType = v.first),
+            SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<String>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(value: SplitType.equal, label: Text('Đều')),
+                  ButtonSegment(value: SplitType.exact, label: Text('Số tiền')),
+                  ButtonSegment(value: SplitType.shares, label: Text('Phần')),
+                  ButtonSegment(value: SplitType.percent, label: Text('%')),
+                ],
+                selected: {_splitType},
+                onSelectionChanged: (v) {
+                  setState(() => _splitType = v.first);
+                  if (_splitType == SplitType.percent && _percentTotal == 0) {
+                    _fillEqualPercent();
+                  }
+                },
+              ),
             ),
             const SizedBox(height: 12),
-            if (_splitType == 'equal') ...[
-              Wrap(spacing: 8, runSpacing: 8, children: [
-                for (final m in _members)
-                  _avatarChip(m,
-                      filter: true,
-                      selected: _selected.contains(m.id),
-                      onSelected: (v) => setState(() =>
-                          v ? _selected.add(m.id!) : _selected.remove(m.id))),
-              ]),
-              if (equalPreview != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Text(
-                    'Mỗi người ${formatVnd(_amountValue ~/ _selected.length)}'
-                    '${_amountValue % _selected.length == 0 ? '' : ' (phần lẻ ${_amountValue % _selected.length} ₫ tính cho người trả)'}',
-                    style: TextStyle(color: scheme.onSurfaceVariant),
-                  ),
-                ),
-            ] else
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Column(children: [
-                    for (final m in _members)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 4),
-                        child: Row(children: [
-                          Checkbox(
-                            value: _selected.contains(m.id),
-                            onChanged: (v) => setState(() => v!
-                                ? _selected.add(m.id!)
-                                : _selected.remove(m.id)),
-                          ),
-                          MemberAvatar(m.name, radius: 14),
-                          const SizedBox(width: 8),
-                          Expanded(child: Text(m.name)),
-                          SizedBox(
-                            width: 130,
-                            child: TextField(
-                              controller: _exact[m.id],
-                              enabled: _selected.contains(m.id),
-                              textAlign: TextAlign.end,
-                              decoration: const InputDecoration(
-                                  isDense: true, hintText: '0', suffixText: '₫'),
-                            ),
-                          ),
-                        ]),
-                      ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                      child: Row(children: [
-                        const Expanded(child: Text('Đã chia')),
-                        Text(
-                          '${formatVnd(_exactTotal)} / ${formatVnd(_amountValue)}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: _exactTotal == _amountValue
-                                ? AppTheme.owed
-                                : AppTheme.owe,
-                          ),
-                        ),
-                      ]),
-                    ),
-                  ]),
-                ),
-              ),
+            _splitEditor(preview),
             const SectionHeader('Chi tiết'),
             Card(
               clipBehavior: Clip.antiAlias,
@@ -369,6 +642,20 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                     );
                     if (d != null) setState(() => _date = d);
                   },
+                ),
+                const Divider(height: 1),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                  child: TextField(
+                    controller: _note,
+                    minLines: 1,
+                    maxLines: 4,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.notes_rounded),
+                      hintText: 'Ghi chú (không bắt buộc)',
+                    ),
+                  ),
                 ),
                 const Divider(height: 1),
                 ValueListenableBuilder<Plan>(

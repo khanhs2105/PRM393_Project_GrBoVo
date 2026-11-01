@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import '../logic/money.dart';
 import '../logic/plans.dart';
 import '../logic/vietqr.dart';
+import '../models/activity.dart';
 import '../models/bank.dart';
 import '../models/group.dart';
 import '../models/member.dart';
@@ -17,6 +18,7 @@ import '../models/settlement.dart';
 import '../services/app_services.dart';
 import '../services/notification_service.dart';
 import '../widgets/common.dart';
+import '../widgets/ui.dart';
 import 'member_form_screen.dart';
 
 /// Màn thanh toán một lượt chuyển: hiện QR VietQR, nhắc nợ, đánh dấu đã trả.
@@ -145,15 +147,54 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
   }
 
+  /// Hỏi số tiền đã trả (mặc định trả hết, sửa được để trả một phần).
   Future<void> _markPaid() async {
-    final ok = await confirm(
-      context,
-      'Xác nhận đã trả?',
-      '${_from!.name} đã chuyển ${formatVnd(t.amount)} cho ${_to!.name}.',
-      ok: 'Đã trả',
+    final controller = TextEditingController(text: '${t.amount}');
+    final amount = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Xác nhận đã trả?'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('${_from!.name} đã chuyển cho ${_to!.name}:'),
+          const SizedBox(height: 12),
+          TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(
+              suffixText: '₫',
+              helperText: 'Sửa số tiền nếu chỉ trả một phần',
+            ),
+          ),
+        ]),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Hủy')),
+          FilledButton(
+            onPressed: () {
+              final v = parseVnd(controller.text);
+              if (v != null && v > 0) Navigator.pop(ctx, v);
+            },
+            child: const Text('Đã trả'),
+          ),
+        ],
+      ),
     );
-    if (!ok) return;
-    await App.settlements.markPaid(widget.group.id!, t);
+    // Không dispose controller ngay: hộp thoại còn đang chạy hiệu ứng đóng.
+    if (amount == null) return;
+    await App.settlements.record(
+      groupId: widget.group.id!,
+      fromId: t.fromId,
+      toId: t.toId,
+      amount: amount,
+    );
+    await App.activities.log(
+      groupId: widget.group.id,
+      groupName: widget.group.name,
+      kind: ActivityKind.settled,
+      message: '${_from!.name} trả ${_to!.name}'
+          '${amount < t.amount ? ' (một phần)' : ''}',
+      amount: amount,
+    );
     HapticFeedback.mediumImpact();
     if (mounted) {
       showSnack(context, 'Đã ghi nhận thanh toán ✓');
@@ -174,16 +215,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF1CC29F), Color(0xFF0E8F74)],
-              ),
-            ),
+          GradientPanel(
             child: Column(children: [
               Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 _Person(_from!.name),

@@ -1,5 +1,5 @@
-/// Đoán loại khoản chi từ nội dung để hiện icon và màu.
-/// Không lưu vào database: đổi nội dung thì loại đổi theo.
+/// Danh mục khoản chi. Người dùng có thể tự chọn (lưu ở cột expenses.category);
+/// nếu không chọn thì đoán từ nội dung để hiện icon và màu.
 library;
 
 import 'vietqr.dart';
@@ -39,4 +39,24 @@ ExpenseCategory categorize(String title) {
     }
   }
   return ExpenseCategory.other;
+}
+
+/// Tên tiếng Việt hiện trên giao diện.
+const categoryLabels = <ExpenseCategory, String>{
+  ExpenseCategory.food: 'Ăn uống',
+  ExpenseCategory.drink: 'Cà phê, trà sữa',
+  ExpenseCategory.rent: 'Tiền nhà',
+  ExpenseCategory.utilities: 'Điện, nước, mạng',
+  ExpenseCategory.transport: 'Đi lại',
+  ExpenseCategory.shopping: 'Mua sắm',
+  ExpenseCategory.fun: 'Giải trí, du lịch',
+  ExpenseCategory.other: 'Khác',
+};
+
+/// Đọc tên danh mục đã lưu trong database. null hoặc tên lạ: null.
+ExpenseCategory? categoryFromName(String? name) {
+  for (final c in ExpenseCategory.values) {
+    if (c.name == name) return c;
+  }
+  return null;
 }

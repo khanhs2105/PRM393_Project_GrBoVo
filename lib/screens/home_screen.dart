@@ -8,6 +8,7 @@ import '../services/app_services.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ui.dart';
+import 'activity_screen.dart';
 import 'group_detail_screen.dart';
 import 'group_form_screen.dart';
 import 'plans_screen.dart';
@@ -71,6 +72,12 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
             actions: [
+              IconButton(
+                tooltip: 'Hoạt động',
+                icon: const Icon(Icons.history_rounded),
+                onPressed: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const ActivityScreen())),
+              ),
               ValueListenableBuilder<Plan>(
                 valueListenable: App.plan,
                 builder: (context, plan, _) => Padding(
@@ -103,6 +110,16 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: ListView(
                             padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
                             children: [
+                              Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(4, 0, 4, 10),
+                                child: Text(greeting(),
+                                    style: TextStyle(
+                                        fontSize: 15,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant)),
+                              ),
                               _SummaryCard(items: items),
                               const SectionHeader('Nhóm của bạn'),
                               for (final (g, s) in items)
@@ -136,59 +153,27 @@ class _SummaryCard extends StatelessWidget {
     final total = items.fold<int>(0, (sum, e) => sum + e.$2.totalSpent);
     final pending = items.fold<int>(0, (sum, e) => sum + e.$2.transfers.length);
     final open = items.where((e) => e.$2.transfers.isNotEmpty).length;
-    const white = Colors.white;
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF1CC29F), Color(0xFF0E8F74)],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.seed.withValues(alpha: 0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
+    return GradientPanel(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Tổng chi tiêu các nhóm',
-            style: TextStyle(color: white.withValues(alpha: 0.85))),
+        Row(children: [
+          Expanded(
+            child: Text('Tổng chi tiêu các nhóm',
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.9))),
+          ),
+          const Icon(Icons.account_balance_wallet_rounded, size: 20),
+        ]),
         const SizedBox(height: 6),
         Text(formatVnd(total),
             style: const TextStyle(
-                color: white, fontSize: 30, fontWeight: FontWeight.w800)),
+                color: Colors.white, fontSize: 30, fontWeight: FontWeight.w800)),
         const SizedBox(height: 16),
         Row(children: [
-          _Stat(label: 'Nhóm', value: '${items.length}'),
-          _Stat(label: 'Nhóm còn nợ', value: '$open'),
-          _Stat(label: 'Lượt cần trả', value: '$pending'),
+          GlassStat(label: 'Nhóm', value: '${items.length}'),
+          const SizedBox(width: 8),
+          GlassStat(label: 'Còn nợ', value: '$open'),
+          const SizedBox(width: 8),
+          GlassStat(label: 'Lượt trả', value: '$pending'),
         ]),
-      ]),
-    );
-  }
-}
-
-class _Stat extends StatelessWidget {
-  final String label;
-  final String value;
-  const _Stat({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(value,
-            style: const TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.w700)),
-        Text(label,
-            style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.8), fontSize: 12)),
       ]),
     );
   }

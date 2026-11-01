@@ -32,6 +32,31 @@ class SettlementRepository {
     );
   }
 
+  /// Ghi nhận một lần trả tiền bất kỳ, kể cả trả một phần hoặc trả trước.
+  Future<int> record({
+    required int groupId,
+    required int fromId,
+    required int toId,
+    required int amount,
+    DateTime? paidAt,
+    String? note,
+  }) {
+    if (fromId == toId) throw ArgumentError('Người trả và người nhận trùng nhau');
+    if (amount <= 0) throw ArgumentError('Số tiền phải lớn hơn 0');
+    return db.insert(
+      'settlements',
+      Settlement(
+        groupId: groupId,
+        fromId: fromId,
+        toId: toId,
+        amount: amount,
+        paidAt: paidAt ?? DateTime.now(),
+        note: note,
+      ).toMap()
+        ..remove('id'),
+    );
+  }
+
   /// Hoàn tác khi bấm nhầm "Đã trả".
   Future<void> delete(int id) =>
       db.delete('settlements', where: 'id = ?', whereArgs: [id]);

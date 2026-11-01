@@ -1,10 +1,18 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../data/group_summary.dart';
+import '../logic/categories.dart';
+import '../logic/expense_filter.dart';
+import '../logic/export.dart';
 import '../logic/money.dart';
 import '../logic/plans.dart';
+import '../logic/vietqr.dart';
+import '../models/activity.dart';
 import '../models/bank.dart';
 import '../models/expense.dart';
 import '../models/group.dart';
@@ -15,10 +23,14 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/shake_picker.dart';
 import '../widgets/ui.dart';
+import 'activity_screen.dart';
+import 'expense_detail_screen.dart';
 import 'expense_form_screen.dart';
 import 'group_form_screen.dart';
 import 'member_form_screen.dart';
 import 'payment_screen.dart';
+import 'record_payment_screen.dart';
+import 'stats_screen.dart';
 
 class GroupDetailScreen extends StatefulWidget {
   final int groupId;
@@ -49,7 +61,67 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
         ok: 'Xóa');
     if (!ok) return;
     await App.groups.delete(g.id!);
+    await App.activities.log(
+      groupId: null,
+      groupName: g.name,
+      kind: ActivityKind.groupDeleted,
+      message: 'Xóa nhóm "${g.name}"',
+    );
     if (mounted) Navigator.pop(context);
+  }
+
+  /// Gửi bản tóm tắt số dư vào Zalo/Messenger.
+  Future<void> _shareSummary(Group g, GroupSummary s) async {
+    await SharePlus.instance.share(ShareParams(
+      text: groupSummaryText(
+        groupName: g.name,
+        members: s.members,
+        expenses: s.expenses,
+        balances: s.balances,
+        transfers: s.transfers,
+      ),
+    ));
+  }
+
+  /// Xuất file CSV (mở được bằng Excel, Google Sheets) rồi chia sẻ.
+  Future<void> _exportCsv(Group g, GroupSummary s) async {
+    try {
+      final dir = await getTemporaryDirectory();
+      final safeName = removeDiacritics(g.name)
+          .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '_')
+          .toLowerCase();
+      final file = File(p.join(dir.path, 'chipin_$safeName.csv'));
+      // BOM để Excel đọc đúng tiếng Việt.
+      final csv = groupCsv(
+        members: s.members,
+        expenses: s.expenses,
+        settlements: s.settlements,
+      );
+      await file.writeAsString('\uFEFF$csv');
+      await SharePlus.instance.share(ShareParams(
+        files: [XFile(file.path, mimeType: 'text/csv')],
+        subject: 'Chipin - ${g.name}',
+      ));
+    } catch (e) {
+      if (mounted) showSnack(context, 'Không xuất được file: $e');
+    }
+  }
+
+  Future<void> _undoSettlement(Group g, GroupSummary s, Settlement st) async {
+    final ok = await confirm(context, 'Hoàn tác?',
+        'Xóa lần trả ${formatVnd(st.amount)} này khỏi lịch sử.',
+        ok: 'Xóa');
+    if (!ok) return;
+    await App.settlements.delete(st.id!);
+    await App.activities.log(
+      groupId: g.id,
+      groupName: g.name,
+      kind: ActivityKind.settleUndone,
+      message:
+          'Hoàn tác: ${s.memberById(st.fromId).name} trả ${s.memberById(st.toId).name}',
+      amount: st.amount,
+    );
+    _reload();
   }
 
   @override
@@ -82,14 +154,55 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                     onPressed: () => showShakePicker(context, s.members, plan),
                   ),
                 ),
+                IconButton(
+                  tooltip: 'Thống kê',
+                  icon: const Icon(Icons.insights_rounded),
+                  onPressed: () =>
+                      _open(StatsScreen(group: group, summary: s)),
+                ),
                 PopupMenuButton<String>(
                   onSelected: (v) {
-                    if (v == 'edit') _open(GroupFormScreen(group: group));
-                    if (v == 'delete') _deleteGroup(group);
+                    switch (v) {
+                      case 'activity':
+                        _open(ActivityScreen(
+                            groupId: group.id, groupName: group.name));
+                      case 'share':
+                        _shareSummary(group, s);
+                      case 'csv':
+                        _exportCsv(group, s);
+                      case 'edit':
+                        _open(GroupFormScreen(group: group));
+                      case 'delete':
+                        _deleteGroup(group);
+                    }
                   },
                   itemBuilder: (_) => const [
-                    PopupMenuItem(value: 'edit', child: Text('Sửa nhóm')),
-                    PopupMenuItem(value: 'delete', child: Text('Xóa nhóm')),
+                    PopupMenuItem(
+                        value: 'activity',
+                        child: ListTile(
+                            leading: Icon(Icons.history_rounded),
+                            title: Text('Lịch sử hoạt động'))),
+                    PopupMenuItem(
+                        value: 'share',
+                        child: ListTile(
+                            leading: Icon(Icons.ios_share_rounded),
+                            title: Text('Chia sẻ tóm tắt'))),
+                    PopupMenuItem(
+                        value: 'csv',
+                        child: ListTile(
+                            leading: Icon(Icons.table_chart_outlined),
+                            title: Text('Xuất file CSV'))),
+                    PopupMenuDivider(),
+                    PopupMenuItem(
+                        value: 'edit',
+                        child: ListTile(
+                            leading: Icon(Icons.edit_outlined),
+                            title: Text('Sửa nhóm'))),
+                    PopupMenuItem(
+                        value: 'delete',
+                        child: ListTile(
+                            leading: Icon(Icons.delete_outline),
+                            title: Text('Xóa nhóm'))),
                   ],
                 ),
               ],
@@ -121,21 +234,18 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                 child: TabBarView(children: [
                   _ExpensesTab(
                     summary: s,
-                    onOpen: (e) =>
-                        _open(ExpenseFormScreen(groupId: group.id!, expense: e)),
+                    onOpen: (e) => _open(
+                        ExpenseDetailScreen(group: group, expenseId: e.id!)),
                     onAdd: () => _open(ExpenseFormScreen(groupId: group.id!)),
                   ),
                   _BalancesTab(
                     summary: s,
                     onPay: (t) => _open(PaymentScreen(group: group, transfer: t)),
-                    onUndo: (settlement) async {
-                      final ok = await confirm(context, 'Hoàn tác?',
-                          'Xóa lần trả ${formatVnd(settlement.amount)} này khỏi lịch sử.',
-                          ok: 'Xóa');
-                      if (!ok) return;
-                      await App.settlements.delete(settlement.id!);
-                      _reload();
-                    },
+                    onRecord: () => _open(RecordPaymentScreen(
+                        group: group,
+                        members: s.members,
+                        transfers: s.transfers)),
+                    onUndo: (st) => _undoSettlement(group, s, st),
                   ),
                   _MembersTab(
                     summary: s,
@@ -167,32 +277,39 @@ class _GroupHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = summary;
     final perPerson = s.members.isEmpty ? 0 : s.totalSpent ~/ s.members.length;
-    final color = groupTypeColor(group.type);
-    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(children: [
-          IconTile(groupTypeIcon(group.type), color, size: 52),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Tổng chi', style: TextStyle(color: muted, fontSize: 13)),
-              Text(formatVnd(s.totalSpent),
-                  style: const TextStyle(
-                      fontSize: 22, fontWeight: FontWeight.w800)),
-              Text('Trung bình ${formatVnd(perPerson)}/người',
-                  style: TextStyle(color: muted, fontSize: 13)),
-            ]),
+    final muted = Colors.white.withValues(alpha: 0.85);
+    return GradientPanel(
+      padding: const EdgeInsets.all(16),
+      child: Row(children: [
+        Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.22),
+            borderRadius: BorderRadius.circular(16),
           ),
-          AvatarStack(s.members.map((m) => m.name).toList(), max: 3),
-        ]),
-      ),
+          child: Icon(groupTypeIcon(group.type), size: 28),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Tổng chi', style: TextStyle(color: muted, fontSize: 13)),
+            Text(formatVnd(s.totalSpent),
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800)),
+            Text('Trung bình ${formatVnd(perPerson)}/người',
+                style: TextStyle(color: muted, fontSize: 13)),
+          ]),
+        ),
+        AvatarStack(s.members.map((m) => m.name).toList(), max: 3),
+      ]),
     );
   }
 }
 
-class _ExpensesTab extends StatelessWidget {
+class _ExpensesTab extends StatefulWidget {
   final GroupSummary summary;
   final void Function(Expense) onOpen;
   final VoidCallback onAdd;
@@ -200,60 +317,168 @@ class _ExpensesTab extends StatelessWidget {
       {required this.summary, required this.onOpen, required this.onAdd});
 
   @override
+  State<_ExpensesTab> createState() => _ExpensesTabState();
+}
+
+class _ExpensesTabState extends State<_ExpensesTab> {
+  final _search = TextEditingController();
+  ExpenseCategory? _category;
+  int? _memberId;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  bool get _filtering =>
+      _search.text.trim().isNotEmpty || _category != null || _memberId != null;
+
+  void _clear() => setState(() {
+        _search.clear();
+        _category = null;
+        _memberId = null;
+      });
+
+  /// Hàng chip lọc: theo người và theo danh mục đang có trong nhóm.
+  Widget _filters(GroupSummary s) {
+    final used = {for (final e in s.expenses) e.effectiveCategory};
+    return SizedBox(
+      height: 40,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          for (final m in s.members)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: FilterChip(
+                avatar: MemberAvatar(m.name, radius: 10),
+                label: Text(m.name),
+                selected: _memberId == m.id,
+                showCheckmark: false,
+                onSelected: (v) => setState(() => _memberId = v ? m.id : null),
+              ),
+            ),
+          for (final c in ExpenseCategory.values)
+            if (used.contains(c))
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: FilterChip(
+                  avatar: Icon(categoryStyle[c]!.$1,
+                      size: 16, color: categoryStyle[c]!.$2),
+                  label: Text(categoryLabels[c]!),
+                  selected: _category == c,
+                  showCheckmark: false,
+                  onSelected: (v) => setState(() => _category = v ? c : null),
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final s = summary;
+    final s = widget.summary;
     if (s.expenses.isEmpty) {
       return EmptyState(
         icon: Icons.receipt_long,
         title: 'Chưa có khoản chi',
         message: 'Thêm bữa ăn, tiền phòng hay tiền điện đầu tiên của nhóm.',
         actionLabel: 'Thêm khoản chi',
-        onAction: onAdd,
+        onAction: widget.onAdd,
       );
     }
+    final shown = filterExpenses(
+      s.expenses,
+      query: _search.text,
+      category: _category,
+      memberId: _memberId,
+    );
     // Gom khoản chi theo ngày, danh sách đã sắp mới nhất trước.
     final byDay = <String, List<Expense>>{};
-    for (final e in s.expenses) {
+    for (final e in shown) {
       byDay.putIfAbsent(dayLabel(e.date), () => []).add(e);
     }
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+      padding: const EdgeInsets.only(bottom: 100),
       children: [
-        for (final entry in byDay.entries) ...[
-          SectionHeader(entry.key,
-              trailing: Text(
-                  formatVnd(entry.value.fold(0, (sum, e) => sum + e.amount)),
-                  style: TextStyle(color: muted, fontSize: 12))),
-          Card(
-            clipBehavior: Clip.antiAlias,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: TextField(
+            controller: _search,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              isDense: true,
+              prefixIcon: const Icon(Icons.search_rounded),
+              hintText: 'Tìm khoản chi, ghi chú...',
+              suffixIcon: _filtering
+                  ? IconButton(
+                      tooltip: 'Bỏ lọc',
+                      onPressed: _clear,
+                      icon: const Icon(Icons.close_rounded))
+                  : null,
+            ),
+          ),
+        ),
+        _filters(s),
+        if (_filtering)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+            child: Text(
+              'Tìm thấy ${shown.length} khoản · '
+              '${formatVnd(shown.fold(0, (sum, e) => sum + e.amount))}',
+              style: TextStyle(color: muted, fontSize: 12),
+            ),
+          ),
+        if (shown.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(32),
+            child: Text('Không có khoản chi nào khớp.',
+                textAlign: TextAlign.center, style: TextStyle(color: muted)),
+          ),
+        for (final entry in byDay.entries)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Column(children: [
-              for (final (i, e) in entry.value.indexed) ...[
-                if (i > 0) const Divider(height: 1, indent: 72),
-                ListTile(
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  leading: e.receiptPath != null &&
-                          File(e.receiptPath!).existsSync()
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(13),
-                          child: Image.file(File(e.receiptPath!),
-                              width: 44, height: 44, fit: BoxFit.cover),
-                        )
-                      : IconTile.category(e.title),
-                  title: Text(e.title,
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: Text(
-                      '${s.memberById(e.paidBy).name} đã trả · chia ${e.shares.length} người'),
-                  trailing: Text(formatVnd(e.amount),
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 15)),
-                  onTap: () => onOpen(e),
-                ),
-              ],
+              SectionHeader(entry.key,
+                  trailing: Text(
+                      formatVnd(entry.value.fold(0, (sum, e) => sum + e.amount)),
+                      style: TextStyle(color: muted, fontSize: 12))),
+              Card(
+                clipBehavior: Clip.antiAlias,
+                child: Column(children: [
+                  for (final (i, e) in entry.value.indexed) ...[
+                    if (i > 0) const Divider(height: 1, indent: 72),
+                    ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 4),
+                      leading: e.receiptPath != null &&
+                              File(e.receiptPath!).existsSync()
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(13),
+                              child: Image.file(File(e.receiptPath!),
+                                  width: 44, height: 44, fit: BoxFit.cover),
+                            )
+                          : IconTile.forCategory(e.effectiveCategory),
+                      title: Text(e.title,
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: Text(
+                          '${s.memberById(e.paidBy).name} đã trả · '
+                          '${e.splitType == SplitType.equal ? 'chia đều' : SplitType.label(e.splitType).toLowerCase()} '
+                          '${e.shares.length} người'),
+                      trailing: Text(formatVnd(e.amount),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 15)),
+                      onTap: () => widget.onOpen(e),
+                    ),
+                  ],
+                ]),
+              ),
             ]),
           ),
-        ],
       ],
     );
   }
@@ -262,10 +487,12 @@ class _ExpensesTab extends StatelessWidget {
 class _BalancesTab extends StatelessWidget {
   final GroupSummary summary;
   final void Function(Transfer) onPay;
+  final VoidCallback onRecord;
   final void Function(Settlement) onUndo;
   const _BalancesTab({
     required this.summary,
     required this.onPay,
+    required this.onRecord,
     required this.onUndo,
   });
 
@@ -313,6 +540,12 @@ class _BalancesTab extends StatelessWidget {
               style: TextStyle(color: muted, fontSize: 12),
             ),
           ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: onRecord,
+          icon: const Icon(Icons.payments_outlined),
+          label: const Text('Ghi nhận thanh toán khác'),
+        ),
         const SectionHeader('Số dư từng người'),
         Card(
           child: Padding(
@@ -357,7 +590,9 @@ class _BalancesTab extends StatelessWidget {
                       Icons.check_rounded, AppTheme.owed, size: 40),
                   title: Text(
                       '${s.memberById(st.fromId).name} → ${s.memberById(st.toId).name}'),
-                  subtitle: Text(formatDateTime(st.paidAt)),
+                  subtitle: Text(st.note == null
+                      ? formatDateTime(st.paidAt)
+                      : '${formatDateTime(st.paidAt)} · ${st.note}'),
                   trailing: Text(formatVnd(st.amount),
                       style: const TextStyle(fontWeight: FontWeight.w600)),
                   onLongPress: () => onUndo(st),
