@@ -53,8 +53,45 @@ class AuthGate extends StatelessWidget {
       builder: (context, snap) {
         final user = snap.data;
         if (user == null) return const LoginScreen();
-        // key theo uid: đổi tài khoản thì màn chính tạo lại từ đầu.
-        return RootShell(key: ValueKey(user.uid));
+        // key theo uid: đổi tài khoản thì mở dữ liệu của tài khoản đó và
+        // tạo lại màn chính từ đầu.
+        return _UserData(key: ValueKey(user.uid), uid: user.uid);
+      },
+    );
+  }
+}
+
+/// Mở dữ liệu trên máy của tài khoản [uid] rồi mới vào màn chính.
+class _UserData extends StatefulWidget {
+  final String uid;
+  const _UserData({super.key, required this.uid});
+
+  @override
+  State<_UserData> createState() => _UserDataState();
+}
+
+class _UserDataState extends State<_UserData> {
+  late final _ready = App.openForUser(widget.uid);
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<void>(
+      future: _ready,
+      builder: (context, snap) {
+        if (snap.hasError) {
+          return Scaffold(
+            body: EmptyState(
+              icon: AppIcons.circleAlert,
+              title: 'Không mở được dữ liệu',
+              message: '${snap.error}',
+            ),
+          );
+        }
+        if (snap.connectionState != ConnectionState.done) {
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
+        }
+        return const RootShell();
       },
     );
   }

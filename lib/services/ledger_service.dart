@@ -154,7 +154,7 @@ class LedgerService {
   final FirebaseAuth _auth;
   Database? _local;
 
-  /// Gắn database trên máy (gọi trong App.init sau khi mở sqflite).
+  /// Gắn database trên máy của tài khoản đang đăng nhập (App.openForUser).
   void attach(Database db) => _local = db;
 
   static const _timeout = Duration(seconds: 15);
