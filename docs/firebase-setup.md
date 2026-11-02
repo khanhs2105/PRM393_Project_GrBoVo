@@ -71,11 +71,6 @@ Lần build đầu sau khi thêm Firebase hơi lâu (Gradle tải Firebase SDK),
    - **Firestore Database > Data**: thấy collection `users`, trong đó có document mang uid của bạn
      với `displayName`, `email`, `plan`, `createdAt`, `lastLoginAt`, `loginCount`.
 3. Trong app bấm biểu tượng **tài khoản** (hình người, góc trên phải):
-   - **Xem JWT (ID token)**: thấy token 3 phần tô màu, header, payload, hạn dùng và dòng
-     **"Token hợp lệ · Chữ ký RS256 hợp lệ"**.
-   - **Sao lưu lên Firebase**: trên Console xuất hiện `users/{uid}/backups/latest`.
-   - **Khôi phục từ Firebase**: cài app trên máy khác, đăng nhập cùng tài khoản, bấm khôi phục là
-     có lại toàn bộ nhóm.
    - Đổi gói "troll" ở màn Gói: trường `plan` trên Firestore đổi theo. Đăng nhập lại trên máy
      khác thì gói được lấy về.
 4. Đăng xuất, đóng app, mở lại: quay về màn đăng nhập. Đăng nhập lại: `loginCount` tăng lên 1.
@@ -110,8 +105,7 @@ mình).
 - Firebase SDK tự gửi token này kèm mọi yêu cầu tới Firestore. Server kiểm token rồi mới điền
   `request.auth.uid`, và `firestore.rules` dùng uid đó để chỉ cho đọc/ghi dữ liệu của chính chủ.
   Token hết hạn thì SDK tự xin token mới bằng refresh token.
-- Màn **Xem JWT** trong app tự làm lại việc kiểm token đó ngay trên máy để minh họa
-  (code ở `lib/logic/jwt.dart`, `lib/services/jwt_verifier.dart`):
+- Code kiểm token trên máy để minh họa (không hiện trong app, chạy bằng unit test) nằm ở `lib/logic/jwt.dart`, `lib/services/jwt_verifier.dart`):
   1. Tách 3 phần, giải mã header và payload.
   2. Tải khóa công khai của Google (JWKS) tại
      `https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com`,

@@ -1,18 +1,14 @@
 import 'package:flutter/material.dart';
 
-import '../data/cloud_backup.dart';
 import '../logic/auth_validation.dart';
 import '../logic/plans.dart';
 import '../models/user_profile.dart';
 import '../services/app_services.dart';
-import '../services/auth_service.dart';
 import '../widgets/common.dart';
 import '../widgets/ui.dart';
-import 'jwt_screen.dart';
 import '../widgets/app_icons.dart';
 
-/// Tài khoản: hồ sơ trên Firestore, xem JWT, sao lưu/khôi phục, đăng xuất.
-/// Trả về true khi dữ liệu trên máy đã thay đổi (khôi phục) để màn chính tải lại.
+/// Tài khoản: tên, email, gói, đổi tên, đăng xuất.
 class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key});
 
@@ -24,7 +20,6 @@ class _AccountScreenState extends State<AccountScreen> {
   final _auth = App.auth!;
   late final Stream<UserProfile?> _profile = _auth.profileChanges();
   bool _busy = false;
-  bool _changed = false;
 
   Future<void> _run(Future<void> Function() job) async {
     setState(() => _busy = true);
@@ -64,40 +59,11 @@ class _AccountScreenState extends State<AccountScreen> {
     await _run(() => _auth.updateDisplayName(name));
   }
 
-  Future<void> _backup() => _run(() async {
-        final snap = await _auth.backup(App.db);
-        if (mounted) {
-          showSnack(context,
-              'Đã sao lưu lên Firebase: ${describeBackup(snap.cast<String, dynamic>())}');
-        }
-      });
-
-  Future<void> _restore() => _run(() async {
-        final b = await _auth.latestBackup();
-        if (!mounted) return;
-        if (b == null) {
-          showSnack(context, 'Chưa có bản sao lưu nào trên Firebase.');
-          return;
-        }
-        final at = AuthService.toDate(b['createdAt']);
-        final ok = await confirm(
-          context,
-          'Khôi phục dữ liệu?',
-          'Bản sao lưu${at == null ? '' : ' lúc ${formatDateTime(at)}'} có '
-              '${describeBackup(b)}.\n\nDữ liệu hiện có trên máy sẽ bị thay thế.',
-          ok: 'Khôi phục',
-        );
-        if (!ok) return;
-        await _auth.restore(App.db, b);
-        _changed = true;
-        if (mounted) showSnack(context, 'Đã khôi phục dữ liệu từ Firebase.');
-      });
-
   Future<void> _signOut() async {
     final ok = await confirm(
       context,
       'Đăng xuất?',
-      'Dữ liệu nhóm vẫn giữ trên máy. Nên sao lưu trước nếu muốn dùng trên máy khác.',
+      'Dữ liệu nhóm vẫn giữ trên máy.',
       ok: 'Đăng xuất',
     );
     if (!ok || !mounted) return;
@@ -111,7 +77,7 @@ class _AccountScreenState extends State<AccountScreen> {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) Navigator.pop(context, _changed);
+        if (!didPop) Navigator.pop(context, false);
       },
       child: Scaffold(
         appBar: AppBar(title: const Text('Tài khoản')),
@@ -169,42 +135,6 @@ class _AccountScreenState extends State<AccountScreen> {
                   ]),
                 ),
                 if (_busy) const LinearProgressIndicator(),
-                const SectionHeader('Bảo mật'),
-                Card(
-                  child: ListTile(
-                    leading: const IconTile(AppIcons.keyRound, Color(0xFF7E57C2)),
-                    title: const Text('Xem JWT (ID token)'),
-                    subtitle: const Text(
-                        'Token Firebase cấp khi đăng nhập, kiểm chữ ký RS256'),
-                    trailing: const Icon(AppIcons.chevronRight),
-                    onTap: () => Navigator.push(context,
-                        MaterialPageRoute(builder: (_) => const JwtScreen())),
-                  ),
-                ),
-                const SectionHeader('Dữ liệu'),
-                Card(
-                  child: Column(children: [
-                    ListTile(
-                      leading: const IconTile(
-                          AppIcons.cloudUpload, Color(0xFF29B6F6)),
-                      title: const Text('Sao lưu lên Firebase'),
-                      subtitle: Text(p?.lastBackupAt == null
-                          ? 'Đẩy toàn bộ nhóm, khoản chi lên Firestore'
-                          : 'Lần gần nhất: ${formatDateTime(p!.lastBackupAt!)}'),
-                      enabled: !_busy,
-                      onTap: _backup,
-                    ),
-                    const Divider(height: 1),
-                    ListTile(
-                      leading: const IconTile(
-                          AppIcons.cloudDownload, Color(0xFF16946A)),
-                      title: const Text('Khôi phục từ Firebase'),
-                      subtitle: const Text('Lấy bản sao lưu về máy này'),
-                      enabled: !_busy,
-                      onTap: _restore,
-                    ),
-                  ]),
-                ),
                 const SizedBox(height: 24),
                 OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(
