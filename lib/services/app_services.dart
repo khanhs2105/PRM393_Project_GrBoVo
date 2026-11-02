@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -8,7 +10,6 @@ import '../data/activity_repository.dart';
 import '../data/app_database.dart';
 import '../data/expense_repository.dart';
 import '../data/group_repository.dart';
-import '../data/seed.dart';
 import '../data/settings_repository.dart';
 import '../data/settlement_repository.dart';
 import '../logic/growth.dart';
@@ -21,13 +22,19 @@ import 'notification_service.dart';
 /// Các đối tượng dùng chung toàn app, khởi tạo một lần trong main().
 /// App nhỏ nên dùng biến toàn cục cho đơn giản, không cần Provider.
 class App {
-  static late final Database db;
-  static late final GroupRepository groups;
-  static late final ExpenseRepository expenses;
-  static late final SettlementRepository settlements;
-  static late final SettingsRepository settings;
-  static late final ActivityRepository activities;
+  /// Dữ liệu trên máy của tài khoản đang đăng nhập. Mỗi tài khoản một file
+  /// SQLite riêng, mở lại bằng [openForUser] khi đổi tài khoản, để tài khoản
+  /// mới không thấy nhóm của tài khoản cũ trên cùng điện thoại.
+  static late Database db;
+  static late GroupRepository groups;
+  static late ExpenseRepository expenses;
+  static late SettlementRepository settlements;
+  static late SettingsRepository settings;
+  static late ActivityRepository activities;
   static late final List<Bank> banks;
+
+  /// uid của tài khoản đang mở dữ liệu, null nếu chưa mở.
+  static String? openedUid;
 
   /// Đăng nhập Firebase. null nếu Firebase chưa cấu hình được
   /// (thiếu google-services.json...), khi đó [firebaseError] cho biết lý do.
@@ -58,15 +65,54 @@ class App {
   static final ads = AdPolicy();
 
   static Future<void> init() async {
-    db = await AppDatabase.open(
-        databaseFactory, join(await getDatabasesPath(), AppDatabase.fileName));
+    banks = parseBanks(await rootBundle.loadString('assets/banks.json'));
+  }
+
+  /// Mở dữ liệu của tài khoản [uid] (gọi sau khi đăng nhập). Gọi lại với
+  /// cùng uid thì không làm gì.
+  ///
+  /// Bản cũ dùng chung một file cho mọi tài khoản. File cũ đó (nếu còn)
+  /// được giao cho tài khoản đăng nhập đầu tiên sau khi cập nhật, các tài
+  /// khoản khác bắt đầu với sổ trống. Không còn tạo nhóm mẫu.
+  static Future<void> openForUser(String uid) {
+    if (openedUid == uid) return Future.value();
+    // Đăng ký xong thì cả màn đăng ký lẫn AuthGate cùng gọi: dùng chung
+    // một lần mở.
+    if (_openingUid == uid && _opening != null) return _opening!;
+    _openingUid = uid;
+    return _opening = _open(uid).whenComplete(() {
+      _opening = null;
+      _openingUid = null;
+    });
+  }
+
+  static Future<void>? _opening;
+  static String? _openingUid;
+
+  static Future<void> _open(String uid) async {
+    final dir = await getDatabasesPath();
+    final path = join(dir, AppDatabase.fileNameFor(uid));
+    final legacy = join(dir, AppDatabase.fileName);
+    if (!await databaseExists(path) && await databaseExists(legacy)) {
+      try {
+        await File(legacy).rename(path);
+        for (final ext in ['-wal', '-shm', '-journal']) {
+          final f = File('$legacy$ext');
+          if (await f.exists()) await f.rename('$path$ext');
+        }
+      } catch (e) {
+        debugPrint('Không chuyển được dữ liệu cũ: $e');
+      }
+    }
+    if (openedUid != null) await db.close();
+    db = await AppDatabase.open(databaseFactory, path);
+    openedUid = uid;
     groups = GroupRepository(db);
     expenses = ExpenseRepository(db);
     settlements = SettlementRepository(db);
     settings = SettingsRepository(db);
     activities = ActivityRepository(db);
     shared?.attach(db);
-    banks = parseBanks(await rootBundle.loadString('assets/banks.json'));
     purchasedPlan = await settings.currentPlan();
     final trial = await settings.get('pro_trial_until');
     trialUntil = trial == null ? null : DateTime.tryParse(trial);
@@ -75,7 +121,6 @@ class App {
       await settings.set('first_open', DateTime.now().toIso8601String());
     }
     _refreshPlan();
-    await seedIfEmpty(db);
   }
 
   static Future<void> initFirebase() async {
@@ -125,12 +170,16 @@ class App {
   /// Đăng nhập rồi lấy lại gói đã lưu trên Firestore (nếu có).
   static Future<void> signIn(String email, String password) async {
     final profile = await auth!.signIn(email: email, password: password);
+    await openForUser(auth!.currentUser!.uid);
     final saved = profile?.plan;
     if (saved != null) await setPlan(Plan.fromName(saved), sync: false);
   }
 
   static Future<void> register(
-          String name, String email, String password) =>
-      auth!.register(
-          name: name, email: email, password: password, plan: plan.value.name);
+      String name, String email, String password) async {
+    await auth!.register(
+        name: name, email: email, password: password, plan: plan.value.name);
+    // Tài khoản mới: bắt đầu gói Con Nợ trên sổ trống của chính mình.
+    await openForUser(auth!.currentUser!.uid);
+  }
 }

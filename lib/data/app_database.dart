@@ -9,6 +9,10 @@ import 'package:sqflite_common/sqlite_api.dart';
 /// Trong unit test dùng databaseFactoryFfi và inMemoryDatabasePath.
 class AppDatabase {
   static const fileName = 'chia_tien.db';
+
+  /// File riêng của từng tài khoản (uid Firebase chỉ có chữ, số).
+  static String fileNameFor(String uid) =>
+      'chia_tien_${uid.replaceAll(RegExp(r'[^A-Za-z0-9]'), '_')}.db';
   /// 1: bản đầu. 2: danh mục, ghi chú, chia theo phần/%, lịch sử hoạt động.
   static const version = 2;
 
