@@ -154,7 +154,8 @@ class _AccountScreenState extends State<AccountScreen> {
                             const SizedBox(height: 6),
                             ValueListenableBuilder<Plan>(
                               valueListenable: App.plan,
-                              builder: (ctx, plan, _) => Text('Gói: ${plan.title}',
+                              builder: (ctx, plan, _) => Text(
+                                  'Gói: ${plan.title}${App.onTrial ? ' (dùng thử)' : ''}',
                                   style: const TextStyle(
                                       fontWeight: FontWeight.w600)),
                             ),

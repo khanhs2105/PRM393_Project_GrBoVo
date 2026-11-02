@@ -26,8 +26,16 @@ tự tính ai nợ ai, rút gọn thành ít lượt chuyển nhất, hiện QR 
 - Xuất file CSV (mở bằng Excel/Google Sheets) và chia sẻ bản tóm tắt nhóm qua Zalo/Messenger
 - Thanh toán bằng QR VietQR có sẵn số tiền và nội dung, lưu QR vào máy, copy số TK
 - **Quét QR ngân hàng bằng camera** để tự điền ngân hàng + số tài khoản (đọc chuẩn EMVCo)
-- Nhắc nợ: chia sẻ tin nhắn sang Zalo/Messenger, hẹn giờ thông báo trên máy
-- 3 gói "troll": Con Nợ, Chủ Nợ, Đòi Nợ Thuê (giả lập, không thanh toán thật)
+- Nhắc nợ: chia sẻ tin nhắn sang Zalo/Messenger, hẹn giờ thông báo trên máy. Mỗi khoản nợ nhắc
+  tối đa 3 lần/ngày để nhắc khéo, không thành quấy rối. Gói Pro có nhắc nhiều mốc và nhắc mỗi tối 7 ngày
+- **Nhân bản nhóm** cho chuyến đi sau: giữ thành viên và tài khoản ngân hàng, bỏ khoản chi
+- 3 gói "troll": Con Nợ, Chủ Nợ, Đòi Nợ Thuê (giả lập, không thanh toán thật), chia theo chiến lược
+  marketing: bản Free không giới hạn nhóm, tự chia đều; Pro có chia không đều, xuất báo cáo, nhắc nợ
+  nâng cao, không quảng cáo
+- **Dùng thử Pro 7 ngày** (mỗi máy một lần), được đề nghị sau bill đầu tiên của nhóm từ 3 người
+  hoặc khi chạm tính năng Pro; báo trước 1 ngày khi sắp hết hạn
+- **Quảng cáo giả** ở bản Free: hiện sau mỗi 3 thao tác có kết quả, không hiện ở lần mở app đầu tiên
+  và không có quảng cáo cho vay
 - Lắc điện thoại để random người bao bữa (gia tốc kế)
 - Lưu offline bằng SQLite, có dữ liệu mẫu để demo
 
