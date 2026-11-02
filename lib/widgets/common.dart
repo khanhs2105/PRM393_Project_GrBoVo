@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../services/app_services.dart';
+import '../services/avatar_cache.dart';
 import 'app_icons.dart';
 
 const groupTypes = {
@@ -57,7 +59,11 @@ Future<bool> confirm(BuildContext context, String title, String message,
 class MemberAvatar extends StatelessWidget {
   final String name;
   final double radius;
-  const MemberAvatar(this.name, {super.key, this.radius = 18});
+
+  /// Tài khoản đứng tên thành viên này (sổ chung). Có thì hiện ảnh đại diện
+  /// của tài khoản đó, chưa có ảnh thì hiện chữ cái đầu như cũ.
+  final String? uid;
+  const MemberAvatar(this.name, {super.key, this.radius = 18, this.uid});
 
   static const _colors = [
     Colors.teal, Colors.indigo, Colors.orange, Colors.pink,
@@ -66,13 +72,25 @@ class MemberAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final id = uid;
+    if (id == null || id.isEmpty || App.auth == null) return _letter(null);
+    return ValueListenableBuilder<ImageProvider?>(
+      valueListenable: AvatarCache.of(id),
+      builder: (context, image, _) => _letter(image),
+    );
+  }
+
+  Widget _letter(ImageProvider? image) {
     final letter = name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase();
     final color = _colors[name.hashCode.abs() % _colors.length];
     return CircleAvatar(
       radius: radius,
       backgroundColor: color.shade100,
       foregroundColor: color.shade900,
-      child: Text(letter, style: TextStyle(fontSize: radius * 0.9)),
+      backgroundImage: image,
+      child: image != null
+          ? null
+          : Text(letter, style: TextStyle(fontSize: radius * 0.9)),
     );
   }
 }

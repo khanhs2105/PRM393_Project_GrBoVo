@@ -8,6 +8,7 @@ import 'package:sqflite_common/sqlite_api.dart';
 
 import '../data/cloud_backup.dart';
 import '../models/user_profile.dart';
+import 'avatar_cache.dart';
 import 'jwt_verifier.dart';
 
 /// Đăng ký, đăng nhập, đăng xuất bằng Firebase Auth (email + mật khẩu) và
@@ -38,6 +39,9 @@ class AuthService {
 
   DocumentReference<Map<String, dynamic>> _userDoc(String uid) =>
       _db.collection('users').doc(uid);
+
+  DocumentReference<Map<String, dynamic>> _avatarDoc(String uid) =>
+      _db.collection('avatars').doc(uid);
 
   DocumentReference<Map<String, dynamic>> _backupDoc(String uid) =>
       _userDoc(uid).collection('backups').doc('latest');
@@ -87,6 +91,14 @@ class AuthService {
     try {
       final snap = await _userDoc(user.uid).get().timeout(_profileTimeout);
       final data = snap.data();
+      // Ảnh đặt trước khi có bản công khai: chép sang avatars/{uid}.
+      final avatar = data?['avatar'];
+      if (avatar is String && avatar.isNotEmpty) {
+        await _safe(_avatarDoc(user.uid).set({
+          'avatar': avatar,
+          'updatedAt': FieldValue.serverTimestamp(),
+        }));
+      }
       return data == null ? null : _profile(user.uid, data);
     } catch (e) {
       debugPrint('Không đọc được hồ sơ: $e');
@@ -127,9 +139,20 @@ class AuthService {
     if (jpeg != null && jpeg.length > 300 * 1024) {
       throw StateError('Ảnh quá lớn, chọn ảnh khác nhé.');
     }
-    await _userDoc(uid).set({
-      'avatar': jpeg == null ? FieldValue.delete() : base64Encode(jpeg),
-    }, SetOptions(merge: true)).timeout(_backupTimeout);
+    final value = jpeg == null ? FieldValue.delete() : base64Encode(jpeg);
+    // Ghi cả bản công khai avatars/{uid} để người cùng sổ chung thấy ảnh.
+    final batch = _db.batch()
+      ..set(_userDoc(uid), {'avatar': value}, SetOptions(merge: true));
+    if (jpeg == null) {
+      batch.delete(_avatarDoc(uid));
+    } else {
+      batch.set(_avatarDoc(uid), {
+        'avatar': value,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit().timeout(_backupTimeout);
+    AvatarCache.put(uid, jpeg);
   }
 
   /// Đổi mật khẩu. Firebase yêu cầu đăng nhập lại gần đây, nên xác thực lại

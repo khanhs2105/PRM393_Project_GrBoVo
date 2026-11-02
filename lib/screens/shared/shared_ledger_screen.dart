@@ -250,6 +250,7 @@ class _LedgerView extends StatelessWidget {
               ledgerName: ledger.name,
               me: d.memberById(t.fromId),
               to: d.memberById(t.toId),
+              toUid: ledger.uidsOf(t.toId).firstOrNull,
               amount: t.amount,
             ),
           if (owedToMe.isNotEmpty) ...[
@@ -258,7 +259,8 @@ class _LedgerView extends StatelessWidget {
               child: Column(children: [
                 for (final t in owedToMe)
                   ListTile(
-                    leading: MemberAvatar(d.nameOf(t.fromId)),
+                    leading: MemberAvatar(d.nameOf(t.fromId),
+                        uid: ledger.uidsOf(t.fromId).firstOrNull),
                     title: Text(d.nameOf(t.fromId)),
                     trailing: SignedAmount(t.amount),
                   ),
@@ -270,7 +272,8 @@ class _LedgerView extends StatelessWidget {
             child: Column(children: [
               for (final m in d.members)
                 ListTile(
-                  leading: MemberAvatar(m.name),
+                  leading: MemberAvatar(m.name,
+                      uid: ledger.uidsOf(m.id).firstOrNull),
                   title: Text(m.id == me ? '${m.name} (bạn)' : m.name,
                       style: const TextStyle(fontWeight: FontWeight.w600)),
                   subtitle: Text(
@@ -375,11 +378,13 @@ class _PayCard extends StatelessWidget {
   final String ledgerName;
   final Member? me;
   final Member? to;
+  final String? toUid;
   final int amount;
   const _PayCard(
       {required this.ledgerName,
       required this.me,
       required this.to,
+      this.toUid,
       required this.amount});
 
   void _showQr(BuildContext context) {
@@ -422,7 +427,7 @@ class _PayCard extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(children: [
-            MemberAvatar(name, radius: 20),
+            MemberAvatar(name, radius: 20, uid: toUid),
             const SizedBox(width: 12),
             Expanded(
               child: Column(

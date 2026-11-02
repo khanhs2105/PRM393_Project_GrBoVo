@@ -123,6 +123,8 @@ users/{uid}
   uid, displayName, email, plan, provider,
   createdAt, lastLoginAt, loginCount, lastBackupAt,
   phone, avatar   (ảnh đại diện JPEG 256px dạng base64, không cần Firebase Storage)
+avatars/{uid}
+  avatar, updatedAt   (bản công khai của ảnh đại diện, người cùng sổ chung xem được)
 users/{uid}/backups/latest
   schemaVersion, createdAt, platform,
   counts:  { groups, members, expenses, ... }
