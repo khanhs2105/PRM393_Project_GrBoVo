@@ -405,6 +405,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                   ),
                   _BalancesTab(
                     summary: s,
+                    ledger: _ledger,
                     onPay: (t) =>
                         _openForResult(PaymentScreen(group: group, transfer: t)),
                     onRecord: () => _openForResult(RecordPaymentScreen(
@@ -680,7 +681,11 @@ class _BalancesTab extends StatelessWidget {
     required this.onUndo,
     required this.remindable,
     required this.onRemind,
+    this.ledger,
   });
+
+  /// Sổ chung (nếu có), để hiện ảnh đại diện của tài khoản đứng tên.
+  final SharedLedger? ledger;
 
   String? _remindUid(Transfer t) {
     for (final (rt, uid) in remindable) {
@@ -752,7 +757,8 @@ class _BalancesTab extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Row(children: [
-                    MemberAvatar(m.name),
+                    MemberAvatar(m.name,
+                        uid: ledger?.uidsOf(m.id).firstOrNull),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -956,7 +962,8 @@ class _MembersTab extends StatelessWidget {
               ListTile(
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                leading: MemberAvatar(m.name, radius: 22),
+                leading: MemberAvatar(m.name,
+                    radius: 22, uid: ledger?.uidsOf(m.id).firstOrNull),
                 title: Text(m.name,
                     style: const TextStyle(fontWeight: FontWeight.w600)),
                 subtitle: Column(

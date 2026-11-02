@@ -97,6 +97,20 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Ảnh đại diện công khai: ai đăng nhập cũng xem được ảnh của một tài
+    // khoản nếu biết uid (lấy từ sổ chung), không liệt kê được. Chỉ chính chủ
+    // ghi/xóa, chỉ có 2 trường, ảnh dưới ~400 KB.
+    match /avatars/{uid} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create, update: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['avatar', 'updatedAt'])
+        && request.resource.data.avatar is string
+        && request.resource.data.avatar.size() < 400000;
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
     // Mọi thứ khác: chặn.
     match /{document=**} {
       allow read, write: if false;
