@@ -18,7 +18,6 @@ import '../models/member.dart';
 import '../models/settlement.dart';
 import '../data/settlement_repository.dart';
 import '../services/app_services.dart';
-import '../services/notification_service.dart';
 import '../widgets/common.dart';
 import '../widgets/pro_prompts.dart';
 import '../widgets/ui.dart';
@@ -115,7 +114,40 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
   }
 
+  /// Hẹn nhắc nợ: lời nhắc gửi qua sổ chung tới tài khoản của người nợ,
+  /// thông báo hiện trên máy NGƯỜI NỢ (không phải máy người bấm).
   Future<void> _scheduleReminder() async {
+    final service = App.shared;
+    if (service == null) {
+      showSnack(context, 'Chưa kết nối được Firebase');
+      return;
+    }
+    final (ledger, debtorUid) = await (() async {
+      try {
+        return await service.debtorAccount(
+            widget.group.id!, t.fromId, t.toId);
+      } on StateError catch (e) {
+        if (mounted) {
+          await showDialog<void>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Chưa gửi được tới máy người nợ'),
+              content: Text(e.message),
+              actions: [
+                FilledButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('OK')),
+              ],
+            ),
+          );
+        }
+        return (null, null);
+      } catch (e) {
+        if (mounted) showSnack(context, 'Không đọc được sổ chung: $e');
+        return (null, null);
+      }
+    })();
+    if (ledger == null || debtorUid == null || !mounted) return;
     final now = DateTime.now();
     final tonight = nextEvening(now);
     final tomorrow = DateTime(now.year, now.month, now.day + 1, 9);
@@ -179,24 +211,28 @@ class _PaymentScreenState extends State<PaymentScreen> {
       return;
     }
     if (!await _takeReminderSlot()) return;
-    if (!await NotificationService.requestPermission()) {
-      if (mounted) showSnack(context, 'Cần cho phép thông báo để nhắc nợ');
+    try {
+      for (final at in times) {
+        await service.remind(
+          ledger: ledger,
+          toUid: debtorUid,
+          amount: t.amount,
+          message: _reminderText(),
+          at: at,
+        );
+      }
+    } catch (e) {
+      if (mounted) showSnack(context, 'Không gửi được nhắc nợ: $e');
       return;
     }
-    for (final at in times) {
-      await NotificationService.schedule(
-        at: at,
-        title: 'Nhắc hạn: ${_from!.name} → ${_to!.name}',
-        body: _reminderText(),
-      );
-    }
     if (mounted) {
+      final who = _from!.name;
       showSnack(
           context,
           times.length == 1
-              ? 'Sẽ nhắc lúc ${formatDateTime(times.first)} (có thể lệch vài phút)'
-              : 'Đã hẹn ${times.length} lần nhắc, lần đầu lúc '
-                  '${formatDateTime(times.first)}');
+              ? 'Máy của $who sẽ báo lúc ${formatDateTime(times.first)}'
+              : 'Đã hẹn ${times.length} lần nhắc trên máy của $who, lần đầu '
+                  'lúc ${formatDateTime(times.first)}');
     }
   }
 

@@ -359,12 +359,18 @@ class LedgerService {
     required String toUid,
     required int amount,
     required String message,
+    DateTime? at,
   }) async {
     final me = _requireUid();
     if (!ledger.isOwner(me)) {
       throw StateError('Chỉ chủ sổ mới gửi được nhắc nợ');
     }
+    if (toUid == me) {
+      throw StateError('Không tự nhắc nợ chính mình được');
+    }
     await _notices.add({
+      // Hẹn giờ: máy người nợ nhận ngay rồi tự đặt lịch trên máy họ.
+      if (at != null) 'deliverAt': Timestamp.fromDate(at),
       'ledgerId': ledger.id,
       'ledgerName': ledger.name,
       'fromUid': me,
@@ -375,6 +381,33 @@ class LedgerService {
       'delivered': false,
       'createdAt': FieldValue.serverTimestamp(),
     }).timeout(_timeout);
+  }
+
+  /// Tìm tài khoản của người nợ trong lượt chuyển [t] của nhóm [groupId]
+  /// để gửi nhắc nợ tới máy họ. Trả về (sổ, uid người nợ), hoặc ném
+  /// [StateError] với lời giải thích nếu không gửi được.
+  Future<(SharedLedger, String)> debtorAccount(
+      int groupId, int fromId, int toId) async {
+    final me = _requireUid();
+    final id = await ledgerIdOf(groupId);
+    if (id == null) {
+      throw StateError('Nhóm chưa bật sổ chung. Vào tab Thành viên > '
+          'Bật sổ chung rồi mời người nợ, lời nhắc mới tới được máy họ.');
+    }
+    final ledger = await fetch(id);
+    if (ledger == null) throw StateError('Không đọc được sổ chung');
+    if (!ledger.isOwner(me)) {
+      throw StateError('Chỉ chủ sổ mới gửi được nhắc nợ');
+    }
+    if (toId != ledger.ownerMemberId) {
+      throw StateError('Chỉ nhắc được người đang nợ bạn (chủ sổ).');
+    }
+    final uids = ledger.uidsOf(fromId).where((u) => u != me).toList();
+    if (uids.isEmpty) {
+      throw StateError('Người này chưa có tài khoản trong sổ. Vào tab '
+          'Thành viên, bấm "Mời" và gửi mã cho họ trước.');
+    }
+    return (ledger, uids.first);
   }
 
   /// Câu nhắc mặc định.
@@ -417,12 +450,21 @@ class LedgerService {
       for (final change in q.docChanges) {
         if (change.type != DocumentChangeType.added) continue;
         final n = LedgerNotice.fromDoc(change.doc);
+        // Phòng hờ: chỉ hiện lời nhắc gửi cho đúng mình, không phải mình gửi.
+        final data = change.doc.data() ?? const {};
+        if (data['toUid'] != me || data['fromUid'] == me) continue;
+        final deliverAt = (data['deliverAt'] as Timestamp?)?.toDate();
         try {
-          await NotificationService.show(
-            id: n.id.hashCode & 0x7fffffff,
-            title: '${n.fromName} nhắc nợ · ${n.ledgerName}',
-            body: n.message,
-          );
+          final id = n.id.hashCode & 0x7fffffff;
+          final title = '${n.fromName} nhắc nợ · ${n.ledgerName}';
+          if (deliverAt != null && deliverAt.isAfter(DateTime.now())) {
+            // Lời nhắc hẹn giờ: đặt lịch ngay trên máy người nợ.
+            await NotificationService.schedule(
+                at: deliverAt, title: title, body: n.message, id: id);
+          } else {
+            await NotificationService.show(
+                id: id, title: title, body: n.message);
+          }
           await change.doc.reference.update({
             'delivered': true,
             'deliveredAt': FieldValue.serverTimestamp(),
