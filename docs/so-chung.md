@@ -16,6 +16,10 @@
 6. **Chỉ chủ sổ** thấy nút 🔔 ở tab **Số dư**, cạnh những lượt "X trả <chủ sổ>" mà X đã có tài
    khoản. Bấm để soạn và gửi nhắc nợ. Máy của X hiện thông báo "<chủ sổ> nhắc nợ".
 
+Nút **Hẹn nhắc** ở màn Trả tiền cũng gửi qua sổ chung: máy của **người nợ** nhận lời nhắc ngay
+và tự đặt lịch thông báo đúng giờ đã chọn trên máy họ (không còn hiện trên máy chủ nợ). Người nợ
+chưa có tài khoản trong sổ thì app báo cần mời trước.
+
 Thành viên chưa nhập mã thì không có nút chuông (chưa biết gửi cho tài khoản nào). Nhấn giữ nhãn
 *Đã vào: ...* để gỡ tài khoản nhận nhầm. Xóa nhóm thì sổ chung cũng bị xóa.
 

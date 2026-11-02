@@ -3,7 +3,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
-/// Thông báo nhắc nợ chạy trên máy (không cần server).
+/// Thông báo hiện trên máy này. Nhắc nợ cho người khác không gọi thẳng
+/// vào đây mà gửi qua LedgerService để hiện trên máy người nợ.
 class NotificationService {
   static final _plugin = FlutterLocalNotificationsPlugin();
 
@@ -41,9 +42,10 @@ class NotificationService {
     required DateTime at,
     required String title,
     required String body,
+    int? id,
   }) async {
     // Cộng thêm mã của nội dung để hai khoản nợ cùng giờ không đè nhau.
-    final id = (at.millisecondsSinceEpoch ~/ 1000 + title.hashCode) & 0x7fffffff;
+    id ??= (at.millisecondsSinceEpoch ~/ 1000 + title.hashCode) & 0x7fffffff;
     await _plugin.zonedSchedule(
       id: id,
       scheduledDate: tz.TZDateTime.from(at, tz.local),
