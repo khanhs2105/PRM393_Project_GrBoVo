@@ -6,13 +6,15 @@ import '../models/activity.dart';
 import '../models/group.dart';
 import '../models/member.dart';
 import '../models/settlement.dart';
+import '../data/settlement_repository.dart';
 import '../services/app_services.dart';
 import '../widgets/common.dart';
 import '../widgets/ui.dart';
 import '../widgets/app_icons.dart';
 
 /// Ghi nhận một lần trả tiền bất kỳ ("Settle up"): chọn ai trả, ai nhận,
-/// bao nhiêu. Dùng cho trả một phần, trả bằng tiền mặt, hoặc trả trước.
+/// bao nhiêu. Dùng cho trả một phần hoặc trả bằng tiền mặt. Không ghi được
+/// quá số người trả đang nợ (và người nhận đang được nợ).
 class RecordPaymentScreen extends StatefulWidget {
   final Group group;
   final List<Member> members;
@@ -47,10 +49,25 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
 
   int get _amountValue => parseVnd(_amount.text) ?? 0;
 
+  /// Số tối đa còn trả được giữa 2 người đang chọn, null khi chưa chọn đủ
+  /// hoặc đang tải.
+  int? _max;
+  bool _saving = false;
+
   @override
   void initState() {
     super.initState();
     _amount.addListener(() => setState(() {}));
+    _loadMax();
+  }
+
+  Future<void> _loadMax() async {
+    final from = _from, to = _to;
+    _max = null; // Gọi từ initState/_pick nên không cần setState ở đây.
+    if (from == null || to == null) return;
+    final max = await App.settlements.maxPayable(widget.group.id!, from, to);
+    if (!mounted || from != _from || to != _to) return;
+    setState(() => _max = max);
   }
 
   @override
@@ -81,11 +98,22 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
     if (_amount.text.isEmpty && _suggested > 0) {
       _amount.text = '$_suggested';
     }
+    _loadMax();
   }
 
   String _name(int id) => widget.members.firstWhere((m) => m.id == id).name;
 
   Future<void> _save() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await _doSave();
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _doSave() async {
     if (_from == null || _to == null) {
       showSnack(context, 'Chọn người trả và người nhận');
       return;
@@ -95,14 +123,25 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
       return;
     }
     final note = _note.text.trim();
-    await App.settlements.record(
-      groupId: widget.group.id!,
-      fromId: _from!,
-      toId: _to!,
-      amount: _amountValue,
-      paidAt: _date,
-      note: note.isEmpty ? null : note,
-    );
+    try {
+      await App.settlements.record(
+        groupId: widget.group.id!,
+        fromId: _from!,
+        toId: _to!,
+        amount: _amountValue,
+        paidAt: _date,
+        note: note.isEmpty ? null : note,
+      );
+    } on OverpaymentException catch (e) {
+      if (!mounted) return;
+      setState(() => _max = e.maxPayable);
+      showSnack(
+          context,
+          e.maxPayable == 0
+              ? '${_name(_from!)} không còn nợ ${_name(_to!)}'
+              : 'Chỉ còn nợ ${formatVnd(e.maxPayable)}, không ghi quá số này');
+      return;
+    }
     await App.activities.log(
       groupId: widget.group.id,
       groupName: widget.group.name,
@@ -133,6 +172,8 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final suggested = _from != null && _to != null ? _suggested : 0;
+    final max = _max;
+    final over = max != null && _amountValue > max;
     return Scaffold(
       appBar: AppBar(title: const Text('Ghi nhận thanh toán')),
       body: ListView(
@@ -162,9 +203,19 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
                     enabledBorder: InputBorder.none,
                     suffixText: '₫',
                     helperText: _amountValue > 0 ? formatVnd(_amountValue) : null,
+                    errorText: max != null && over && max > 0
+                        ? 'Chỉ còn nợ ${formatVnd(max)}, không trả quá'
+                        : null,
                   ),
                 ),
-                if (suggested > 0)
+                if (max == 0)
+                  Text(
+                    '${_name(_from!)} hiện không nợ ${_name(_to!)}, '
+                    'không cần ghi nhận thanh toán.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: scheme.error, fontSize: 12),
+                  )
+                else if (suggested > 0)
                   Wrap(spacing: 8, children: [
                     ActionChip(
                       label: Text('Trả hết ${formatVnd(suggested)}'),
@@ -175,12 +226,10 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
                       onPressed: () => _amount.text = '${suggested ~/ 2}',
                     ),
                   ])
-                else if (_from != null && _to != null)
-                  Text(
-                    '${_name(_from!)} hiện không nợ ${_name(_to!)}. '
-                    'Vẫn ghi được nếu là trả trước hoặc cho mượn.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                else if (max != null)
+                  ActionChip(
+                    label: Text('Trả tối đa ${formatVnd(max)}'),
+                    onPressed: () => _amount.text = '$max',
                   ),
               ]),
             ),
@@ -223,7 +272,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           child: FilledButton.icon(
-            onPressed: _save,
+            onPressed: _saving || over || max == 0 ? null : _save,
             icon: const Icon(AppIcons.check),
             label: const Text('Lưu thanh toán'),
           ),
