@@ -54,3 +54,21 @@ String authErrorMessage(String code) => switch (code) {
       'requires-recent-login' => 'Cần đăng nhập lại để làm thao tác này.',
       _ => 'Có lỗi xảy ra ($code).',
     };
+
+/// Số điện thoại Việt Nam, không bắt buộc: 0xxxxxxxxx hoặc +84xxxxxxxxx.
+String? validatePhone(String? v) {
+  final s = (v ?? '').replaceAll(RegExp(r'[\s.-]'), '');
+  if (s.isEmpty) return null;
+  if (!RegExp(r'^(0|\+84)\d{9}$').hasMatch(s)) {
+    return 'Số điện thoại không hợp lệ (vd: 0912345678)';
+  }
+  return null;
+}
+
+/// Mật khẩu mới phải khác mật khẩu cũ và đủ mạnh.
+String? validateNewPassword(String? v, String current) {
+  final err = validatePassword(v);
+  if (err != null) return err;
+  if (v == current) return 'Mật khẩu mới phải khác mật khẩu cũ';
+  return null;
+}

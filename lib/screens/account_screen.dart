@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
-import '../logic/auth_validation.dart';
 import '../logic/plans.dart';
 import '../models/user_profile.dart';
 import '../services/app_services.dart';
 import '../widgets/common.dart';
 import '../widgets/ui.dart';
 import '../widgets/app_icons.dart';
+import 'change_password_screen.dart';
+import 'edit_profile_screen.dart';
 
-/// Tài khoản: tên, email, gói, đổi tên, đăng xuất.
+/// Tài khoản: ảnh đại diện, tên, email, gói, sửa hồ sơ, đổi mật khẩu, đăng xuất.
 class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key});
 
@@ -32,32 +34,72 @@ class _AccountScreenState extends State<AccountScreen> {
     }
   }
 
-  Future<void> _rename(String current) async {
-    final c = TextEditingController(text: current);
-    final key = GlobalKey<FormState>();
-    final name = await showDialog<String>(
+  // Giữ MemoryImage theo chuỗi base64 để ảnh không nháy lại mỗi lần build.
+  String? _avatarKey;
+  MemoryImage? _avatarImage;
+
+  MemoryImage? _avatarFor(UserProfile? p) {
+    final key = p?.avatarBase64;
+    if (key != _avatarKey) {
+      _avatarKey = key;
+      final bytes = p?.avatarBytes;
+      _avatarImage = bytes == null ? null : MemoryImage(bytes);
+    }
+    return _avatarImage;
+  }
+
+  Future<void> _changeAvatar(bool hasAvatar) async {
+    final choice = await showModalBottomSheet<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Đổi tên hiển thị'),
-        content: Form(
-          key: key,
-          child: TextFormField(
-              controller: c, autofocus: true, validator: validateDisplayName),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Hủy')),
-          FilledButton(
-              onPressed: () {
-                if (key.currentState!.validate()) Navigator.pop(ctx, c.text);
-              },
-              child: const Text('Lưu')),
-        ],
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(AppIcons.camera),
+            title: const Text('Chụp ảnh'),
+            onTap: () => Navigator.pop(ctx, 'camera'),
+          ),
+          ListTile(
+            leading: const Icon(AppIcons.images),
+            title: const Text('Chọn từ thư viện'),
+            onTap: () => Navigator.pop(ctx, 'gallery'),
+          ),
+          if (hasAvatar)
+            ListTile(
+              leading: Icon(AppIcons.trash2,
+                  color: Theme.of(ctx).colorScheme.error),
+              title: const Text('Xóa ảnh đại diện'),
+              onTap: () => Navigator.pop(ctx, 'remove'),
+            ),
+        ]),
       ),
     );
-    if (name == null) return;
-    await _run(() => _auth.updateDisplayName(name));
+    if (choice == null || !mounted) return;
+    if (choice == 'remove') {
+      await _run(() => _auth.updateAvatar(null));
+      return;
+    }
+    // Thu nhỏ còn 256px, nén JPEG để lưu thẳng vào Firestore (vài chục KB).
+    final picked = await ImagePicker().pickImage(
+      source: choice == 'camera' ? ImageSource.camera : ImageSource.gallery,
+      maxWidth: 256,
+      maxHeight: 256,
+      imageQuality: 70,
+      preferredCameraDevice: CameraDevice.front,
+    );
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    await _run(() async {
+      await _auth.updateAvatar(bytes);
+      if (mounted) showSnack(context, 'Đã cập nhật ảnh đại diện');
+    });
   }
+
+  Future<void> _editProfile(UserProfile? p) => Navigator.push(context,
+      MaterialPageRoute(builder: (_) => EditProfileScreen(profile: p)));
+
+  Future<void> _changePassword() => Navigator.push(context,
+      MaterialPageRoute(builder: (_) => const ChangePasswordScreen()));
 
   Future<void> _signOut() async {
     final ok = await confirm(
@@ -89,21 +131,50 @@ class _AccountScreenState extends State<AccountScreen> {
                 ? p!.displayName
                 : (user?.displayName ?? 'Bạn');
             final email = p?.email ?? user?.email ?? '';
+            final avatar = _avatarFor(p);
             return ListView(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
               children: [
                 GradientPanel(
                   child: Row(children: [
-                    CircleAvatar(
-                      radius: 30,
-                      backgroundColor: Colors.white,
-                      child: Text(
-                        name.isEmpty ? '?' : name.characters.first.toUpperCase(),
-                        style: const TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFFFF4D6D)),
-                      ),
+                    GestureDetector(
+                      onTap: _busy ? null : () => _changeAvatar(avatar != null),
+                      child: Stack(clipBehavior: Clip.none, children: [
+                        CircleAvatar(
+                          radius: 34,
+                          backgroundColor: Colors.white,
+                          backgroundImage: avatar,
+                          child: avatar != null
+                              ? null
+                              : Text(
+                                  name.isEmpty
+                                      ? '?'
+                                      : name.characters.first.toUpperCase(),
+                                  style: const TextStyle(
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFFFF4D6D)),
+                                ),
+                        ),
+                        Positioned(
+                          right: -2,
+                          bottom: -2,
+                          child: Container(
+                            padding: const EdgeInsets.all(5),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.15),
+                                    blurRadius: 4),
+                              ],
+                            ),
+                            child: const Icon(AppIcons.camera,
+                                size: 14, color: Color(0xFFFF4D6D)),
+                          ),
+                        ),
+                      ]),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -127,14 +198,33 @@ class _AccountScreenState extends State<AccountScreen> {
                             ),
                           ]),
                     ),
-                    IconButton(
-                      tooltip: 'Đổi tên',
-                      icon: const Icon(AppIcons.pencil),
-                      onPressed: _busy ? null : () => _rename(name),
-                    ),
                   ]),
                 ),
                 if (_busy) const LinearProgressIndicator(),
+                const SectionHeader('Tài khoản'),
+                Card(
+                  child: Column(children: [
+                    ListTile(
+                      leading: const IconTile(AppIcons.user, Color(0xFFFF8A3D)),
+                      title: const Text('Chỉnh sửa hồ sơ'),
+                      subtitle: Text((p?.phone ?? '').isEmpty
+                          ? 'Tên hiển thị, số điện thoại'
+                          : p!.phone!),
+                      trailing: const Icon(AppIcons.chevronRight),
+                      enabled: !_busy,
+                      onTap: () => _editProfile(p),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading:
+                          const IconTile(AppIcons.lock, Color(0xFF7E57C2)),
+                      title: const Text('Đổi mật khẩu'),
+                      trailing: const Icon(AppIcons.chevronRight),
+                      enabled: !_busy,
+                      onTap: _changePassword,
+                    ),
+                  ]),
+                ),
                 const SizedBox(height: 24),
                 OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(

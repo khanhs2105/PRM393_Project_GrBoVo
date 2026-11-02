@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -105,12 +107,45 @@ class AuthService {
         .map((s) => s.data() == null ? null : _profile(uid, s.data()!));
   }
 
-  Future<void> updateDisplayName(String name) async {
+  /// Cập nhật tên hiển thị (cả trên Firebase Auth) và số điện thoại.
+  Future<void> updateProfile({
+    required String name,
+    required String? phone,
+  }) async {
     final uid = _requireUid();
     await _auth.currentUser!.updateDisplayName(name.trim());
-    await _userDoc(uid)
-        .set({'displayName': name.trim()}, SetOptions(merge: true))
-        .timeout(_profileTimeout);
+    final p = phone?.trim() ?? '';
+    await _userDoc(uid).set({
+      'displayName': name.trim(),
+      'phone': p.isEmpty ? FieldValue.delete() : p,
+    }, SetOptions(merge: true)).timeout(_profileTimeout);
+  }
+
+  /// Lưu ảnh đại diện (JPEG đã thu nhỏ). null là xóa ảnh.
+  Future<void> updateAvatar(Uint8List? jpeg) async {
+    final uid = _requireUid();
+    if (jpeg != null && jpeg.length > 300 * 1024) {
+      throw StateError('Ảnh quá lớn, chọn ảnh khác nhé.');
+    }
+    await _userDoc(uid).set({
+      'avatar': jpeg == null ? FieldValue.delete() : base64Encode(jpeg),
+    }, SetOptions(merge: true)).timeout(_backupTimeout);
+  }
+
+  /// Đổi mật khẩu. Firebase yêu cầu đăng nhập lại gần đây, nên xác thực lại
+  /// bằng mật khẩu hiện tại trước. Sai mật khẩu cũ thì ném
+  /// FirebaseAuthException (invalid-credential / wrong-password).
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final user = _auth.currentUser;
+    final email = user?.email;
+    if (user == null || email == null) throw StateError('Bạn chưa đăng nhập');
+    final cred =
+        EmailAuthProvider.credential(email: email, password: currentPassword);
+    await user.reauthenticateWithCredential(cred);
+    await user.updatePassword(newPassword);
   }
 
   /// Lưu gói "troll" vào hồ sơ. Không đăng nhập thì bỏ qua.

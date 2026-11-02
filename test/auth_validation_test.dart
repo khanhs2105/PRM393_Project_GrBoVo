@@ -29,4 +29,14 @@ void main() {
     expect(authErrorMessage('email-already-in-use'), contains('đã được đăng ký'));
     expect(authErrorMessage('la-lam'), contains('la-lam'));
   });
+
+  test('số điện thoại và mật khẩu mới', () {
+    expect(validatePhone(''), isNull);
+    expect(validatePhone('0912 345 678'), isNull);
+    expect(validatePhone('+84912345678'), isNull);
+    expect(validatePhone('12345'), isNotNull);
+    expect(validateNewPassword('abc123', 'abc123'), isNotNull);
+    expect(validateNewPassword('abc', 'abc123'), isNotNull);
+    expect(validateNewPassword('moi456', 'abc123'), isNull);
+  });
 }
