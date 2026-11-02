@@ -9,7 +9,8 @@ tự tính ai nợ ai, rút gọn thành ít lượt chuyển nhất, hiện QR 
 
 - **Đăng ký, đăng nhập, quên mật khẩu, đăng xuất** bằng Firebase Authentication (email + mật khẩu).
   Mở lại app không phải đăng nhập lại
-- **Hồ sơ người dùng lưu trên Cloud Firestore** (`users/{uid}`): tên, email, gói, lần đăng nhập.
+- **Hồ sơ người dùng lưu trên Cloud Firestore** (`users/{uid}`): tên, email, số điện thoại, ảnh đại diện, gói.
+  Người dùng tự sửa hồ sơ, đổi ảnh đại diện (camera/thư viện) và đổi mật khẩu.
   Luật bảo mật ở [firestore.rules](firestore.rules): mỗi người chỉ đọc/ghi dữ liệu của mình
 - **JWT**: Firebase cấp ID token (JWT, ký RS256) khi đăng nhập; Firestore kiểm token này trước mọi lần
   đọc/ghi. `lib/logic/jwt.dart` có code giải mã và kiểm chữ ký, kiểm chứng bằng `test/jwt_test.dart`
