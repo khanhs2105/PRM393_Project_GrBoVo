@@ -11,9 +11,8 @@ tự tính ai nợ ai, rút gọn thành ít lượt chuyển nhất, hiện QR 
   Mở lại app không phải đăng nhập lại
 - **Hồ sơ người dùng lưu trên Cloud Firestore** (`users/{uid}`): tên, email, gói, lần đăng nhập.
   Luật bảo mật ở [firestore.rules](firestore.rules): mỗi người chỉ đọc/ghi dữ liệu của mình
-- **JWT**: màn "Xem JWT" hiện ID token của Firebase, giải mã header/payload, hạn dùng, và tự kiểm
-  chữ ký RS256 bằng khóa công khai của Google cùng các claim `iss`, `aud`, `exp`, `iat`, `sub`
-- **Sao lưu/khôi phục** toàn bộ dữ liệu nhóm lên Firestore để chuyển sang máy khác
+- **JWT**: Firebase cấp ID token (JWT, ký RS256) khi đăng nhập; Firestore kiểm token này trước mọi lần
+  đọc/ghi. `lib/logic/jwt.dart` có code giải mã và kiểm chữ ký, kiểm chứng bằng `test/jwt_test.dart`
 - Nhóm, thành viên, khoản chi với **4 cách chia** như Splitwise: chia đều, theo số tiền,
   theo phần (2:1:1), theo phần trăm. Phần lẻ chia theo phương pháp phần dư lớn nhất nên tổng luôn khớp
 - Danh mục (tự đoán theo nội dung hoặc tự chọn), ghi chú, ảnh hóa đơn
