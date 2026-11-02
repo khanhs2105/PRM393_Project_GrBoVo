@@ -42,7 +42,8 @@ class NotificationService {
     required String title,
     required String body,
   }) async {
-    final id = at.millisecondsSinceEpoch ~/ 1000 % 0x7fffffff;
+    // Cộng thêm mã của nội dung để hai khoản nợ cùng giờ không đè nhau.
+    final id = (at.millisecondsSinceEpoch ~/ 1000 + title.hashCode) & 0x7fffffff;
     await _plugin.zonedSchedule(
       id: id,
       scheduledDate: tz.TZDateTime.from(at, tz.local),

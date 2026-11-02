@@ -2,17 +2,16 @@ import 'package:flutter/material.dart';
 
 import '../data/group_summary.dart';
 import '../logic/money.dart';
-import '../logic/plans.dart';
 import '../models/group.dart';
 import '../services/app_services.dart';
 import '../theme.dart';
 import '../widgets/app_icons.dart';
 import '../widgets/common.dart';
+import '../widgets/pro_prompts.dart';
 import '../widgets/ui.dart';
 import 'account_screen.dart';
 import 'group_detail_screen.dart';
 import 'group_form_screen.dart';
-import 'plans_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -36,19 +35,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _reload() => setState(() => _future = _load());
 
-  Future<void> _createGroup(int currentCount) async {
-    if (!App.plan.value.canCreateGroup(currentCount)) {
-      final go = await confirm(context, 'Hết chỗ rồi 😅', groupLimitMessage,
-          ok: 'Xem các gói');
-      if (go && mounted) {
-        await Navigator.push(
-            context, MaterialPageRoute(builder: (_) => const PlansScreen()));
-      }
-      return;
-    }
+  /// Bản Free không giới hạn số nhóm (theo chiến lược: không chặn thao tác
+  /// cốt lõi để ép nâng cấp).
+  Future<void> _createGroup() async {
     final created = await Navigator.push<bool>(
         context, MaterialPageRoute(builder: (_) => const GroupFormScreen()));
-    if (created == true) _reload();
+    if (created != true) return;
+    _reload();
+    if (mounted) await afterResult(context);
   }
 
   Future<void> _openGroup(Group g) async {
@@ -131,7 +125,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           message:
                               'Tạo nhóm cho phòng trọ, buổi đi ăn hay chuyến du lịch để bắt đầu chia tiền.',
                           actionLabel: 'Tạo nhóm đầu tiên',
-                          onAction: () => _createGroup(0),
+                          onAction: () => _createGroup(),
                         )
                       : RefreshIndicator(
                           onRefresh: () async => _reload(),
@@ -169,7 +163,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
           floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => _createGroup(items?.length ?? 0),
+            onPressed: () => _createGroup(),
             icon: const Icon(AppIcons.plus),
             label: const Text('Tạo nhóm'),
           ),

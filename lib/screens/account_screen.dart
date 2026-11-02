@@ -154,7 +154,8 @@ class _AccountScreenState extends State<AccountScreen> {
                             const SizedBox(height: 6),
                             ValueListenableBuilder<Plan>(
                               valueListenable: App.plan,
-                              builder: (ctx, plan, _) => Text('Gói: ${plan.title}',
+                              builder: (ctx, plan, _) => Text(
+                                  'Gói: ${plan.title}${App.onTrial ? ' (dùng thử)' : ''}',
                                   style: const TextStyle(
                                       fontWeight: FontWeight.w600)),
                             ),
@@ -168,31 +169,6 @@ class _AccountScreenState extends State<AccountScreen> {
                   ]),
                 ),
                 if (_busy) const LinearProgressIndicator(),
-                const SectionHeader('Hồ sơ trên Firestore'),
-                Card(
-                  child: Column(children: [
-                    _info('UID', user?.uid ?? '-'),
-                    _info('Ngày tạo',
-                        p?.createdAt == null ? '-' : formatDateTime(p!.createdAt!)),
-                    _info(
-                        'Đăng nhập gần nhất',
-                        p?.lastLoginAt == null
-                            ? '-'
-                            : formatDateTime(p!.lastLoginAt!)),
-                    _info('Số lần đăng nhập', '${p?.loginCount ?? '-'}'),
-                    _info(
-                        'Sao lưu gần nhất',
-                        p?.lastBackupAt == null
-                            ? 'Chưa sao lưu'
-                            : formatDateTime(p!.lastBackupAt!)),
-                    if (snap.hasError)
-                      ListTile(
-                        leading: const Icon(AppIcons.cloudOff),
-                        title: const Text('Không đọc được hồ sơ'),
-                        subtitle: Text('${snap.error}'),
-                      ),
-                  ]),
-                ),
                 const SectionHeader('Bảo mật'),
                 Card(
                   child: ListTile(
@@ -212,7 +188,9 @@ class _AccountScreenState extends State<AccountScreen> {
                       leading: const IconTile(
                           AppIcons.cloudUpload, Color(0xFF29B6F6)),
                       title: const Text('Sao lưu lên Firebase'),
-                      subtitle: const Text('Đẩy toàn bộ nhóm, khoản chi lên Firestore'),
+                      subtitle: Text(p?.lastBackupAt == null
+                          ? 'Đẩy toàn bộ nhóm, khoản chi lên Firestore'
+                          : 'Lần gần nhất: ${formatDateTime(p!.lastBackupAt!)}'),
                       enabled: !_busy,
                       onTap: _backup,
                     ),
@@ -243,16 +221,4 @@ class _AccountScreenState extends State<AccountScreen> {
       ),
     );
   }
-
-  Widget _info(String label, String value) => ListTile(
-        dense: true,
-        title: Text(label),
-        trailing: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 200),
-          child: SelectableText(value,
-              textAlign: TextAlign.end,
-              style: const TextStyle(fontWeight: FontWeight.w600)),
-        ),
-      );
 }
-

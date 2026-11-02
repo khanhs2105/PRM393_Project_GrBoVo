@@ -5,15 +5,17 @@ library;
 import 'money.dart';
 
 enum Plan {
-  /// Miễn phí.
+  /// Miễn phí. Theo chiến lược: bản Free dùng được thật, không chặn thao tác
+  /// cốt lõi (tạo nhóm, chia đều, ghi nợ, nhắc hạn cơ bản).
   conNo(
     title: 'Con Nợ',
     price: 'Miễn phí (vì bạn còn đang nợ)',
-    slogan: 'Đủ dùng để biết mình nợ ai.',
-    maxGroups: 2,
+    slogan: 'Bản miễn phí dùng được thật, không giới hạn thao tác.',
     perks: [
-      'Tối đa 2 nhóm',
-      'Nhắc nợ lịch sự, nhẹ nhàng như người yêu cũ',
+      'Không giới hạn nhóm và khoản chi',
+      'Tự động chia đều',
+      'Hẹn nhắc nợ 1 mốc, lịch sự như người yêu cũ',
+      'Có quảng cáo (quảng cáo vui, không phải cho vay đâu)',
       'Huy hiệu "Đang cố gắng" 🥲',
     ],
   ),
@@ -22,11 +24,13 @@ enum Plan {
     title: 'Chủ Nợ',
     price: '29.000 ₫/tháng (chia đều cho cả nhóm cũng được)',
     slogan: 'Dành cho người luôn ứng tiền trước.',
-    maxGroups: null,
     perks: [
-      'Không giới hạn nhóm',
-      'Nhắc nợ cấp 2: thân thiện nhưng có chút cà khịa',
+      'Chia không đều: theo số tiền, theo phần, theo %',
+      'Xuất báo cáo CSV (mở bằng Excel)',
+      'Nhắc nợ nhiều mốc, nhắc lặp lại mỗi tối',
+      'Mẫu tin nhắc khéo cấp 2: thân thiện nhưng có chút cà khịa',
       'Ảnh hóa đơn làm bằng chứng',
+      'Không quảng cáo',
       'Huy hiệu "Người tốt bụng" 😇',
     ],
   ),
@@ -35,7 +39,6 @@ enum Plan {
     title: 'Đòi Nợ Thuê',
     price: '99.000 ₫/tháng, hoặc 1 bát phở mỗi tuần',
     slogan: 'Không ai thoát được. Kể cả bạn thân.',
-    maxGroups: null,
     perks: [
       'Mọi thứ của gói Chủ Nợ',
       'Nhắc nợ cấp 3: drama, không trả không yên',
@@ -48,31 +51,27 @@ enum Plan {
     required this.title,
     required this.price,
     required this.slogan,
-    required this.maxGroups,
     required this.perks,
   });
 
   final String title;
   final String price;
   final String slogan;
-
-  /// null là không giới hạn.
-  final int? maxGroups;
   final List<String> perks;
 
-  bool canCreateGroup(int currentGroups) =>
-      maxGroups == null || currentGroups < maxGroups!;
+  /// Gói trả phí (Pro). Con Nợ là bản Free.
+  bool get isPro => this != Plan.conNo;
 
-  bool get canAttachReceipt => this != Plan.conNo;
+  bool get canSplitUnevenly => isPro;
+  bool get canExportReport => isPro;
+  bool get canAdvancedReminders => isPro;
+  bool get showsAds => !isPro;
+  bool get canAttachReceipt => isPro;
   bool get canShakeToPick => this == Plan.doiNoThue;
 
   static Plan fromName(String? name) =>
       Plan.values.firstWhere((p) => p.name == name, orElse: () => Plan.conNo);
 }
-
-/// Câu báo khi gói Con Nợ chạm giới hạn nhóm.
-const groupLimitMessage =
-    'Gói Con Nợ chỉ được 2 nhóm thôi. Trả hết nợ rồi nâng cấp nhé 😌';
 
 /// Tin nhắn nhắc nợ, gắt dần theo gói. [variant] chọn một trong các câu
 /// (truyền số ngẫu nhiên hoặc số lần đã nhắc để mỗi lần một câu khác).

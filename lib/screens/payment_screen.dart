@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:gal/gal.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../logic/growth.dart';
 import '../logic/money.dart';
 import '../logic/plans.dart';
 import '../logic/vietqr.dart';
@@ -18,6 +19,7 @@ import '../models/settlement.dart';
 import '../services/app_services.dart';
 import '../services/notification_service.dart';
 import '../widgets/common.dart';
+import '../widgets/pro_prompts.dart';
 import '../widgets/ui.dart';
 import 'member_form_screen.dart';
 import '../widgets/app_icons.dart';
@@ -73,7 +75,21 @@ class _PaymentScreenState extends State<PaymentScreen> {
         variant: _random.nextInt(100),
       );
 
+  /// Đếm số lần nhắc khoản này hôm nay. Hết lượt thì báo và trả về false.
+  Future<bool> _takeReminderSlot() async {
+    final key = reminderCountKey(
+        widget.group.id!, t.fromId, t.toId, DateTime.now());
+    final count = int.tryParse(await App.settings.get(key) ?? '') ?? 0;
+    if (!canRemindAgain(count)) {
+      if (mounted) showSnack(context, reminderLimitMessage);
+      return false;
+    }
+    await App.settings.set(key, '${count + 1}');
+    return true;
+  }
+
   Future<void> _share() async {
+    if (!await _takeReminderSlot()) return;
     final text = StringBuffer(_reminderText());
     if (_to!.hasBank) {
       text
@@ -100,51 +116,86 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   Future<void> _scheduleReminder() async {
     final now = DateTime.now();
-    var tonight = DateTime(now.year, now.month, now.day, 20);
-    if (tonight.isBefore(now)) tonight = tonight.add(const Duration(days: 1));
+    final tonight = nextEvening(now);
     final tomorrow = DateTime(now.year, now.month, now.day + 1, 9);
+    final pro = App.plan.value.canAdvancedReminders;
 
-    final at = await showModalBottomSheet<DateTime>(
+    Widget proTile(BuildContext ctx, IconData icon, String title,
+            String subtitle, List<DateTime> times) =>
+        ListTile(
+          leading: Icon(icon),
+          title: Text(title),
+          subtitle: Text(subtitle),
+          trailing: pro ? null : const Icon(AppIcons.lock, size: 18),
+          onTap: () => Navigator.pop(ctx, pro ? times : const <DateTime>[]),
+        );
+
+    final times = await showModalBottomSheet<List<DateTime>>(
       context: context,
+      isScrollControlled: true,
       builder: (ctx) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const ListTile(title: Text('Nhắc nợ lúc nào?')),
-          ListTile(
-            leading: const Icon(AppIcons.timer),
-            title: const Text('1 phút nữa (để thử)'),
-            onTap: () =>
-                Navigator.pop(ctx, DateTime.now().add(const Duration(minutes: 1))),
-          ),
-          ListTile(
-            leading: const Icon(AppIcons.moon),
-            title: Text('20:00 ${tonight.day == now.day ? 'tối nay' : 'tối mai'}'),
-            onTap: () => Navigator.pop(ctx, tonight),
-          ),
-          ListTile(
-            leading: const Icon(AppIcons.sun),
-            title: const Text('9:00 sáng mai'),
-            onTap: () => Navigator.pop(ctx, tomorrow),
-          ),
-          ListTile(
-            leading: const Icon(AppIcons.calendarRange),
-            title: const Text('3 ngày nữa'),
-            onTap: () => Navigator.pop(ctx, now.add(const Duration(days: 3))),
-          ),
-        ]),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const ListTile(title: Text('Nhắc nợ lúc nào?')),
+            ListTile(
+              leading: const Icon(AppIcons.timer),
+              title: const Text('1 phút nữa (để thử)'),
+              onTap: () => Navigator.pop(
+                  ctx, [DateTime.now().add(const Duration(minutes: 1))]),
+            ),
+            ListTile(
+              leading: const Icon(AppIcons.moon),
+              title: Text(
+                  '20:00 ${tonight.day == now.day ? 'tối nay' : 'tối mai'}'),
+              onTap: () => Navigator.pop(ctx, [tonight]),
+            ),
+            ListTile(
+              leading: const Icon(AppIcons.sun),
+              title: const Text('9:00 sáng mai'),
+              onTap: () => Navigator.pop(ctx, [tomorrow]),
+            ),
+            ListTile(
+              leading: const Icon(AppIcons.calendarRange),
+              title: const Text('3 ngày nữa'),
+              onTap: () =>
+                  Navigator.pop(ctx, [now.add(const Duration(days: 3))]),
+            ),
+            const Divider(),
+            proTile(ctx, AppIcons.bell, 'Nhắc nhiều mốc (Pro)',
+                'Tối nay, sau 1 ngày và sau 3 ngày', multiStepReminders(now)),
+            proTile(ctx, AppIcons.refreshCw, 'Nhắc mỗi tối trong 7 ngày (Pro)',
+                '20:00 mỗi ngày, khỏi phải nhắn tay', dailyReminders(now)),
+          ]),
+        ),
       ),
     );
-    if (at == null) return;
+    if (times == null || !mounted) return;
+    if (times.isEmpty) {
+      await showProUpsell(context,
+          title: 'Nhắc thêm vài lần trước hạn',
+          message: 'Nhắc nhiều mốc và nhắc lặp lại là tính năng Pro, '
+              'để bạn không phải nhắn tay.');
+      return;
+    }
+    if (!await _takeReminderSlot()) return;
     if (!await NotificationService.requestPermission()) {
       if (mounted) showSnack(context, 'Cần cho phép thông báo để nhắc nợ');
       return;
     }
-    await NotificationService.schedule(
-      at: at,
-      title: 'Nhắc nợ: ${_from!.name} → ${_to!.name}',
-      body: _reminderText(),
-    );
+    for (final at in times) {
+      await NotificationService.schedule(
+        at: at,
+        title: 'Nhắc hạn: ${_from!.name} → ${_to!.name}',
+        body: _reminderText(),
+      );
+    }
     if (mounted) {
-      showSnack(context, 'Sẽ nhắc lúc ${formatDateTime(at)} (có thể lệch vài phút)');
+      showSnack(
+          context,
+          times.length == 1
+              ? 'Sẽ nhắc lúc ${formatDateTime(times.first)} (có thể lệch vài phút)'
+              : 'Đã hẹn ${times.length} lần nhắc, lần đầu lúc '
+                  '${formatDateTime(times.first)}');
     }
   }
 

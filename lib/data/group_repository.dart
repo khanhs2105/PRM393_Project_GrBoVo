@@ -33,6 +33,19 @@ class GroupRepository {
     });
   }
 
+  /// Nhân bản nhóm cho lần đi chơi sau: chép loại nhóm và thành viên (kèm
+  /// tài khoản ngân hàng), không chép khoản chi hay lần trả tiền.
+  /// Trả về id của nhóm mới.
+  Future<int> duplicate(int groupId, String newName) async {
+    final source = await getById(groupId);
+    if (source == null) throw StateError('Không tìm thấy nhóm #$groupId');
+    final copied = await members(groupId);
+    return create(
+      Group(name: newName, type: source.type, createdAt: DateTime.now()),
+      [for (final m in copied) m.copyWith(groupId: 0)],
+    );
+  }
+
   Future<void> update(Group group) => db.update(
         'groups',
         group.toMap(),
