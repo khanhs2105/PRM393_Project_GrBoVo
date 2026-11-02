@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "879417765837",
+    "project_id": "doinoprm393",
+    "storage_bucket": "doinoprm393.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:879417765837:android:4cabbd464066d6d7d91e84",
+        "android_client_info": {
+          "package_name": "com.grbovo.chia_tien"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBM0hWcQlq-CYC9T6uiNuB6gQrpgdBbWa0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
