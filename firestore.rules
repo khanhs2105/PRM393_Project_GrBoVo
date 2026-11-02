@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// Luật bảo mật Cloud Firestore cho Chipin.
+// Luật bảo mật Cloud Firestore cho Alo, Trả Tiền!.
 // Dán nội dung file này vào Firebase Console > Firestore Database > Rules > Publish.
 //
 // request.auth chỉ có giá trị khi app gửi kèm một ID token (JWT) hợp lệ:
@@ -22,6 +22,79 @@ service cloud.firestore {
       match /backups/{backupId} {
         allow read, write: if request.auth != null && request.auth.uid == uid;
       }
+    }
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ledgerData(ledgerId) {
+      return get(/databases/$(database)/documents/ledgers/$(ledgerId)).data;
+    }
+
+    // Sổ chung: chủ sổ ghi, thành viên (đã nhập mã mời) chỉ đọc.
+    match /ledgers/{ledgerId} {
+      allow read: if signedIn() && request.auth.uid in resource.data.memberUids;
+
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.memberUids == [request.auth.uid];
+
+      // Chủ sổ sửa thoải mái nhưng không được đổi chủ.
+      allow update: if signedIn()
+        && ((resource.data.ownerUid == request.auth.uid
+             && request.resource.data.ownerUid == resource.data.ownerUid)
+            || isJoining(ledgerId));
+
+      allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+
+      // Người được mời tự thêm mình vào sổ. Chỉ được đụng tới phần của
+      // chính mình, và phải có mã mời đúng của sổ này: tài khoản đứng tên
+      // đúng thành viên ghi trong mã.
+      function isJoining(ledgerId) {
+        let code = request.resource.data.lastJoinCode;
+        let inv = get(/databases/$(database)/documents/invites/$(code)).data;
+        let me = request.auth.uid;
+        let newData = request.resource.data;
+        return newData.diff(resource.data).affectedKeys()
+              .hasOnly(['memberUids', 'links', 'linkNames', 'lastJoinCode'])
+          && inv.ledgerId == ledgerId
+          && newData.memberUids.toSet()
+              == resource.data.memberUids.toSet().union([me].toSet())
+          && newData.links.diff(resource.data.links).affectedKeys().hasOnly([me])
+          && newData.links[me] == inv.memberId
+          && newData.linkNames.diff(resource.data.linkNames).affectedKeys().hasOnly([me]);
+      }
+    }
+
+    // Mã mời: ai đăng nhập cũng đọc được một mã nếu biết mã (không liệt kê
+    // được). Chỉ chủ sổ tạo / xóa mã của sổ mình.
+    match /invites/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && ledgerData(request.resource.data.ledgerId).ownerUid == request.auth.uid;
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+    }
+
+    // Nhắc nợ: chỉ chủ sổ gửi, và chỉ gửi cho tài khoản đang ở trong sổ.
+    // Người nhận đọc được và chỉ được đánh dấu "đã nhận".
+    match /notifications/{id} {
+      allow read: if signedIn()
+        && (resource.data.toUid == request.auth.uid
+            || resource.data.fromUid == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.fromUid == request.auth.uid
+        && ledgerData(request.resource.data.ledgerId).ownerUid == request.auth.uid
+        && request.resource.data.toUid in ledgerData(request.resource.data.ledgerId).memberUids
+        && request.resource.data.toUid != request.auth.uid;
+      allow update: if signedIn()
+        && resource.data.toUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['delivered', 'deliveredAt']);
+      allow delete: if false;
     }
 
     // Mọi thứ khác: chặn.

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/app_services.dart';
 import '../widgets/app_icons.dart';
 import 'activity_screen.dart';
 import 'home_screen.dart';
@@ -15,6 +16,19 @@ class RootShell extends StatefulWidget {
 
 class _RootShellState extends State<RootShell> {
   int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Nghe nhắc nợ từ chủ các sổ chung mình đang tham gia.
+    App.shared?.startInbox();
+  }
+
+  @override
+  void dispose() {
+    App.shared?.stopInbox();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

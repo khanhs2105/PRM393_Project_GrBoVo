@@ -55,6 +55,19 @@ class NotificationService {
     debugPrint('Đã đặt nhắc nợ #$id lúc $at');
   }
 
+  /// Hiện ngay một thông báo với [id] riêng (nhắc nợ từ chủ sổ chung).
+  static Future<void> show({
+    required int id,
+    required String title,
+    required String body,
+  }) =>
+      _plugin.show(
+        id: id,
+        title: title,
+        body: body,
+        notificationDetails: _details,
+      );
+
   /// Hiện ngay một thông báo (dùng để thử).
   static Future<void> showNow(String title, String body) => _plugin.show(
         id: 0,

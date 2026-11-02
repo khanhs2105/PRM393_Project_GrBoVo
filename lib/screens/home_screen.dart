@@ -12,6 +12,7 @@ import '../widgets/ui.dart';
 import 'account_screen.dart';
 import 'group_detail_screen.dart';
 import 'group_form_screen.dart';
+import 'shared/shared_ledger_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -107,6 +108,11 @@ class _HomeScreenState extends State<HomeScreen> {
             ]),
             actions: [
               IconButton(
+                tooltip: 'Nhập mã mời vào sổ chung',
+                icon: const Icon(AppIcons.keyRound),
+                onPressed: () => showJoinLedgerDialog(context),
+              ),
+              IconButton(
                 tooltip: 'Tài khoản',
                 icon: const Icon(AppIcons.circleUser),
                 onPressed: _openAccount,
@@ -119,13 +125,27 @@ class _HomeScreenState extends State<HomeScreen> {
               : items == null
                   ? const Center(child: CircularProgressIndicator())
                   : items.isEmpty
-                      ? EmptyState(
-                          icon: AppIcons.users,
-                          title: 'Chưa có nhóm nào',
-                          message:
-                              'Tạo nhóm cho phòng trọ, buổi đi ăn hay chuyến du lịch để bắt đầu chia tiền.',
-                          actionLabel: 'Tạo nhóm đầu tiên',
-                          onAction: () => _createGroup(),
+                      ? ListView(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
+                          children: [
+                            const SharedLedgersSection(),
+                            EmptyState(
+                              icon: AppIcons.users,
+                              title: 'Chưa có nhóm nào',
+                              message:
+                                  'Tạo nhóm cho phòng trọ, buổi đi ăn hay chuyến du lịch để bắt đầu chia tiền.\n'
+                                  'Được bạn bè mời thì bấm "Nhập mã mời".',
+                              actionLabel: 'Tạo nhóm đầu tiên',
+                              onAction: () => _createGroup(),
+                            ),
+                            Center(
+                              child: TextButton.icon(
+                                onPressed: () => showJoinLedgerDialog(context),
+                                icon: const Icon(AppIcons.keyRound, size: 18),
+                                label: const Text('Nhập mã mời'),
+                              ),
+                            ),
+                          ],
                         )
                       : RefreshIndicator(
                           onRefresh: () async => _reload(),
@@ -134,6 +154,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             children: [
                               _SummaryCard(items: items),
                               const SizedBox(height: 16),
+                              const SharedLedgersSection(),
                               _Segmented(
                                 labels: const ['Tất cả', 'Còn nợ', 'Đã xong'],
                                 value: _filter,
