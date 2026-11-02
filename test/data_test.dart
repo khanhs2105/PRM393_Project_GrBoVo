@@ -239,6 +239,49 @@ void main() {
     );
   });
 
+  test('không trả được quá số nợ, bấm "Đã trả" lần 2 bị chặn', () async {
+    final (gid, ids) = await makeGroup();
+    await expenses.save(
+      Expense(
+        groupId: gid,
+        title: 'Lẩu',
+        amount: 300000,
+        paidBy: ids[0],
+        splitType: SplitType.equal,
+        shares: splitEqual(300000, ids),
+        date: DateTime(2026, 11, 1),
+      ),
+    );
+    final t = (await GroupSummary.load(db, gid)).transfers.first;
+    expect(await settlements.maxPayable(gid, t.fromId, t.toId), t.amount);
+
+    // Bấm liên tục 3 lần cùng lúc: chỉ lần đầu được ghi.
+    final results = await Future.wait([
+      for (var i = 0; i < 3; i++)
+        settlements
+            .markPaid(gid, t)
+            .then<Object>((id) => id, onError: (Object e) => e),
+    ]);
+    expect(results.whereType<int>().length, 1);
+    expect(results.whereType<OverpaymentException>().length, 2);
+    expect((await settlements.byGroup(gid)).length, 1);
+    expect(await settlements.maxPayable(gid, t.fromId, t.toId), 0);
+
+    // Người kia trả quá số nợ cũng bị chặn, trả đúng thì được.
+    final other = ids.firstWhere((id) => id != ids[0] && id != t.fromId);
+    await expectLater(
+      settlements.record(
+          groupId: gid, fromId: other, toId: ids[0], amount: 100001),
+      throwsA(isA<OverpaymentException>()
+          .having((e) => e.maxPayable, 'maxPayable', 100000)),
+    );
+    await settlements.record(
+        groupId: gid, fromId: other, toId: ids[0], amount: 100000);
+    final s = await GroupSummary.load(db, gid);
+    expect(s.transfers, isEmpty);
+    expect(s.balances.values.every((b) => b == 0), isTrue);
+  });
+
   test('lịch sử hoạt động mới nhất trước, lọc theo nhóm', () async {
     final log = ActivityRepository(db);
     await log.log(

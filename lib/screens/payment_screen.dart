@@ -16,6 +16,7 @@ import '../models/bank.dart';
 import '../models/group.dart';
 import '../models/member.dart';
 import '../models/settlement.dart';
+import '../data/settlement_repository.dart';
 import '../services/app_services.dart';
 import '../services/notification_service.dart';
 import '../widgets/common.dart';
@@ -199,46 +200,103 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
   }
 
+  /// Đang ghi nhận "Đã trả": khóa nút để bấm liên tục không ghi nhiều lần.
+  bool _paying = false;
+
   /// Hỏi số tiền đã trả (mặc định trả hết, sửa được để trả một phần).
   Future<void> _markPaid() async {
-    final controller = TextEditingController(text: '${t.amount}');
+    if (_paying) return;
+    setState(() => _paying = true);
+    try {
+      await _doMarkPaid();
+    } finally {
+      if (mounted) setState(() => _paying = false);
+    }
+  }
+
+  Future<void> _doMarkPaid() async {
+    // Lấy số nợ còn lại mới nhất, không tin số trên màn hình (có thể đã cũ).
+    final max = await App.settlements
+        .maxPayable(widget.group.id!, t.fromId, t.toId);
+    if (!mounted) return;
+    if (max <= 0) {
+      showSnack(context, '${_from!.name} đã trả hết cho ${_to!.name} rồi');
+      Navigator.pop(context, true);
+      return;
+    }
+    final suggested = t.amount < max ? t.amount : max;
+    final controller = TextEditingController(text: '$suggested');
+    var closed = false;
     final amount = await showDialog<int>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Xác nhận đã trả?'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('${_from!.name} đã chuyển cho ${_to!.name}:'),
-          const SizedBox(height: 12),
-          TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: const InputDecoration(
-              suffixText: '₫',
-              helperText: 'Sửa số tiền nếu chỉ trả một phần',
-            ),
+      builder: (ctx) {
+        String? error;
+        return StatefulBuilder(
+          builder: (ctx, setDialog) => AlertDialog(
+            title: const Text('Xác nhận đã trả?'),
+            content: Column(mainAxisSize: MainAxisSize.min, children: [
+              Text('${_from!.name} đã chuyển cho ${_to!.name}:'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  suffixText: '₫',
+                  helperText: 'Sửa số tiền nếu chỉ trả một phần',
+                  errorText: error,
+                ),
+              ),
+            ]),
+            actions: [
+              TextButton(
+                  onPressed: () {
+                    if (closed) return;
+                    closed = true;
+                    Navigator.pop(ctx);
+                  },
+                  child: const Text('Hủy')),
+              FilledButton(
+                onPressed: () {
+                  if (closed) return;
+                  final v = parseVnd(controller.text);
+                  if (v == null || v <= 0) {
+                    setDialog(() => error = 'Nhập số tiền');
+                  } else if (v > max) {
+                    setDialog(() =>
+                        error = 'Chỉ còn nợ ${formatVnd(max)}, không trả quá');
+                  } else {
+                    // Chặn bấm 2 lần khi hộp thoại đang đóng.
+                    closed = true;
+                    Navigator.pop(ctx, v);
+                  }
+                },
+                child: const Text('Đã trả'),
+              ),
+            ],
           ),
-        ]),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Hủy')),
-          FilledButton(
-            onPressed: () {
-              final v = parseVnd(controller.text);
-              if (v != null && v > 0) Navigator.pop(ctx, v);
-            },
-            child: const Text('Đã trả'),
-          ),
-        ],
-      ),
+        );
+      },
     );
     // Không dispose controller ngay: hộp thoại còn đang chạy hiệu ứng đóng.
-    if (amount == null) return;
-    await App.settlements.record(
-      groupId: widget.group.id!,
-      fromId: t.fromId,
-      toId: t.toId,
-      amount: amount,
-    );
+    if (amount == null || !mounted) return;
+    try {
+      await App.settlements.record(
+        groupId: widget.group.id!,
+        fromId: t.fromId,
+        toId: t.toId,
+        amount: amount,
+      );
+    } on OverpaymentException catch (e) {
+      if (mounted) {
+        showSnack(
+            context,
+            e.maxPayable == 0
+                ? 'Khoản này đã trả hết rồi'
+                : 'Chỉ còn nợ ${formatVnd(e.maxPayable)}, không ghi nhận thêm');
+      }
+      return;
+    }
     await App.activities.log(
       groupId: widget.group.id,
       groupName: widget.group.name,
@@ -394,7 +452,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: FilledButton.icon(
-            onPressed: _markPaid,
+            onPressed: _paying ? null : _markPaid,
             icon: const Icon(AppIcons.check),
             label: const Text('Đã trả'),
           ),
