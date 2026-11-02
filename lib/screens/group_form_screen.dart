@@ -53,6 +53,11 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
         showSnack(context, 'Nhóm cần ít nhất 2 người');
         return;
       }
+      final lower = names.map((n) => n.toLowerCase()).toList();
+      if (lower.toSet().length != lower.length) {
+        showSnack(context, 'Có hai người trùng tên, đặt tên khác nhau nhé');
+        return;
+      }
       final id = await App.groups.create(
         Group(name: _name.text.trim(), type: _type, createdAt: DateTime.now()),
         [for (final n in names) Member(groupId: 0, name: n)],

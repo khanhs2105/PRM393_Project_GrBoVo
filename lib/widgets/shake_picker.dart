@@ -15,6 +15,10 @@ import 'app_icons.dart';
 /// một thành viên. Chỉ có ở gói Đòi Nợ Thuê.
 Future<void> showShakePicker(
     BuildContext context, List<Member> members, Plan plan) async {
+  if (members.length < 2) {
+    showSnack(context, 'Cần ít nhất 2 thành viên để lắc chọn người bao.');
+    return;
+  }
   if (!plan.canShakeToPick) {
     final go = await confirm(context, 'Tính năng VIP 😈',
         'Lắc để chọn người bao chỉ có ở gói Đòi Nợ Thuê.',
@@ -55,6 +59,9 @@ class _ShakeDialogState extends State<_ShakeDialog> {
     _sub = userAccelerometerEventStream().listen((e) {
       final g = sqrt(e.x * e.x + e.y * e.y + e.z * e.z);
       if (g > _threshold && _spin == null) _start();
+    }, onError: (Object e) {
+      // Máy không có cảm biến: dùng nút "Không lắc được?" thay thế.
+      debugPrint('Không đọc được cảm biến: $e');
     });
   }
 

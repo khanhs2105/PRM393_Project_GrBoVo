@@ -23,6 +23,7 @@ import '../widgets/pro_prompts.dart';
 import '../widgets/ui.dart';
 import 'member_form_screen.dart';
 import '../widgets/app_icons.dart';
+import '../services/friendly_error.dart';
 
 /// Màn thanh toán một lượt chuyển: hiện QR VietQR, nhắc nợ, đánh dấu đã trả.
 class PaymentScreen extends StatefulWidget {
@@ -143,7 +144,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         }
         return (null, null);
       } catch (e) {
-        if (mounted) showSnack(context, 'Không đọc được sổ chung: $e');
+        if (mounted) showSnack(context, 'Không đọc được sổ chung: ${friendlyError(e)}');
         return (null, null);
       }
     })();
@@ -222,7 +223,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         );
       }
     } catch (e) {
-      if (mounted) showSnack(context, 'Không gửi được nhắc nợ: $e');
+      if (mounted) showSnack(context, 'Không gửi được nhắc nợ: ${friendlyError(e)}');
       return;
     }
     if (mounted) {

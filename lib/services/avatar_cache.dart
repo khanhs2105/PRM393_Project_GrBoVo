@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -11,20 +12,36 @@ import 'package:flutter/widgets.dart';
 /// chung xem được. Mỗi uid lắng nghe một lần, ảnh đổi thì tự cập nhật.
 class AvatarCache {
   static final _images = <String, ValueNotifier<ImageProvider?>>{};
+  static final _subs = <String, StreamSubscription<Object?>>{};
 
   static ValueNotifier<ImageProvider?> of(String uid) =>
       _images.putIfAbsent(uid, () {
         final n = ValueNotifier<ImageProvider?>(null);
-        FirebaseFirestore.instance
+        _subs[uid] = FirebaseFirestore.instance
             .collection('avatars')
             .doc(uid)
             .snapshots()
             .listen(
-              (s) => n.value = decode(s.data()?['avatar']),
-              onError: (Object e) => debugPrint('Không đọc được ảnh $uid: $e'),
-            );
+          (s) => n.value = decode(s.data()?['avatar']),
+          onError: (Object e) {
+            // Listener lỗi (vd. vừa đăng xuất) thì Firestore tự hủy nó:
+            // bỏ khỏi cache để lần sau đăng ký lại.
+            debugPrint('Không đọc được ảnh $uid: $e');
+            _subs.remove(uid);
+            _images.remove(uid);
+          },
+        );
         return n;
       });
+
+  /// Quên hết ảnh đã tải và ngừng lắng nghe (gọi khi đăng xuất).
+  static void clear() {
+    for (final s in _subs.values) {
+      s.cancel();
+    }
+    _subs.clear();
+    _images.clear();
+  }
 
   /// Cập nhật ngay ảnh của chính mình sau khi đổi, khỏi chờ Firestore.
   static void put(String uid, Uint8List? jpeg) =>

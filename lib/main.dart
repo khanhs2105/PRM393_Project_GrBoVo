@@ -71,7 +71,37 @@ class _UserData extends StatefulWidget {
 }
 
 class _UserDataState extends State<_UserData> {
-  late final _ready = App.openForUser(widget.uid);
+  late Future<void> _ready = _open();
+
+  Future<void> _open() =>
+      App.openForUser(widget.uid, claimLegacy: _askClaimLegacy);
+
+  /// Bản cũ để dữ liệu mọi tài khoản chung một file. Hỏi trước khi giao
+  /// file đó cho tài khoản này, vì có thể là dữ liệu của người khác.
+  Future<bool> _askClaimLegacy() async {
+    if (!mounted) return false;
+    final ok = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Có dữ liệu cũ trên máy'),
+        content: const Text(
+            'Máy này còn dữ liệu nhóm từ bản trước (khi chưa tách dữ liệu '
+            'theo tài khoản). Đây có phải dữ liệu của bạn không?\n\n'
+            'Chọn "Không" nếu máy dùng chung: bạn bắt đầu với sổ trống, dữ '
+            'liệu cũ vẫn để nguyên cho người kia.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Không')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Của tôi, nhận vào')),
+        ],
+      ),
+    );
+    return ok ?? false;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -80,10 +110,21 @@ class _UserDataState extends State<_UserData> {
       builder: (context, snap) {
         if (snap.hasError) {
           return Scaffold(
-            body: EmptyState(
-              icon: AppIcons.circleAlert,
-              title: 'Không mở được dữ liệu',
-              message: '${snap.error}',
+            body: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                EmptyState(
+                  icon: AppIcons.circleAlert,
+                  title: 'Không mở được dữ liệu',
+                  message: '${snap.error}',
+                  actionLabel: 'Thử lại',
+                  onAction: () => setState(() => _ready = _open()),
+                ),
+                TextButton(
+                  onPressed: App.signOut,
+                  child: const Text('Đăng xuất'),
+                ),
+              ],
             ),
           );
         }

@@ -85,6 +85,9 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
     return 0;
   }
 
+  /// Số tiền app tự điền lần gần nhất (để biết người dùng đã sửa chưa).
+  String? _autoFilled;
+
   void _pick({int? from, int? to}) {
     setState(() {
       if (from != null) _from = from;
@@ -94,9 +97,16 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
         if (to != null) _from = null;
       }
     });
-    // Chọn đủ 2 người mà chưa gõ số tiền thì điền sẵn số đang nợ.
-    if (_amount.text.isEmpty && _suggested > 0) {
+    // Chọn đủ 2 người thì điền sẵn số đang nợ. Đổi cặp người mà số tiền
+    // vẫn là số tự điền lần trước (người dùng chưa sửa) thì điền lại.
+    if ((_amount.text.isEmpty || _amount.text == _autoFilled) &&
+        _suggested > 0) {
       _amount.text = '$_suggested';
+      _autoFilled = _amount.text;
+    } else if (_autoFilled != null && _amount.text == _autoFilled) {
+      // Cặp mới không có nợ gợi ý: bỏ số tự điền của cặp cũ.
+      _amount.clear();
+      _autoFilled = null;
     }
     _loadMax();
   }

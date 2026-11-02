@@ -240,13 +240,14 @@ class LedgerService {
   }
 
   /// Đẩy dữ liệu mới nhất của nhóm lên sổ chung (nếu nhóm đã bật).
-  /// Lỗi mạng thì bỏ qua, lần mở nhóm sau sẽ đẩy lại.
-  Future<void> publish(int groupId) async {
+  /// Lỗi mạng thì bỏ qua, lần mở nhóm sau sẽ đẩy lại. Trả về false nếu
+  /// đẩy không được, để chủ sổ biết thành viên đang xem dữ liệu cũ.
+  Future<bool> publish(int groupId) async {
     try {
       final id = await ledgerIdOf(groupId);
-      if (id == null) return;
+      if (id == null) return true;
       final group = await GroupRepository(_local!).getById(groupId);
-      if (group == null) return;
+      if (group == null) return true;
       await _ledgers.doc(id).update({
         'name': group.name,
         'type': group.type,
@@ -254,8 +255,43 @@ class LedgerService {
         'snapshot': await _snapshot(groupId),
         'updatedAt': FieldValue.serverTimestamp(),
       }).timeout(_timeout);
+      return true;
     } catch (e) {
       debugPrint('Không đồng bộ được sổ chung: $e');
+      return false;
+    }
+  }
+
+  /// Đổi tên hiển thị của mình ở mọi sổ chung đang tham gia, để chủ sổ và
+  /// người khác thấy tên mới. Lỗi mạng thì bỏ qua.
+  Future<void> renameMe(String name) async {
+    final me = uid;
+    if (me == null || name.isEmpty) return;
+    try {
+      final q = await _ledgers
+          .where('memberUids', arrayContains: me)
+          .get()
+          .timeout(_timeout);
+      for (final d in q.docs) {
+        await d.reference.update({
+          'linkNames.$me': name,
+          if (d.data()['ownerUid'] == me) 'ownerName': name,
+        }).timeout(_timeout);
+      }
+    } catch (e) {
+      debugPrint('Không đổi được tên ở sổ chung: $e');
+    }
+  }
+
+  /// Chủ sổ gỡ mọi tài khoản đang đứng tên thành viên [memberId] (khi xóa
+  /// thành viên đó khỏi nhóm trên máy).
+  Future<void> removeAccountsOfMember(int groupId, int memberId) async {
+    final id = await ledgerIdOf(groupId);
+    if (id == null) return;
+    final ledger = await fetch(id);
+    if (ledger == null || !ledger.isOwner(uid ?? '')) return;
+    for (final u in ledger.uidsOf(memberId)) {
+      if (u != ledger.ownerUid) await removeAccount(id, u);
     }
   }
 
@@ -492,25 +528,47 @@ class LedgerService {
         .where('delivered', isEqualTo: false)
         .snapshots()
         .listen((q) async {
-      for (final change in q.docChanges) {
-        if (change.type != DocumentChangeType.added) continue;
-        final n = LedgerNotice.fromDoc(change.doc);
+      final added = [
+        for (final change in q.docChanges)
+          if (change.type == DocumentChangeType.added) change.doc,
+      ];
+      // Mở app sau nhiều ngày: nhiều lời nhắc đã tới hạn cùng lúc. Mỗi sổ
+      // chỉ hiện lời nhắc mới nhất, các cái cũ hơn chỉ đánh dấu đã nhận.
+      final now = DateTime.now();
+      final newestDue = <String, String>{};
+      DateTime when(DocumentSnapshot<Map<String, dynamic>> d) =>
+          (d.data()?['deliverAt'] as Timestamp?)?.toDate() ??
+          (d.data()?['createdAt'] as Timestamp?)?.toDate() ??
+          now;
+      for (final d in added) {
+        final at = (d.data()?['deliverAt'] as Timestamp?)?.toDate();
+        if (at != null && at.isAfter(now)) continue;
+        final ledgerId = d.data()?['ledgerId'] as String? ?? '';
+        final cur = newestDue[ledgerId];
+        final curDoc = cur == null ? null : added.firstWhere((x) => x.id == cur);
+        if (curDoc == null || when(d).isAfter(when(curDoc))) {
+          newestDue[ledgerId] = d.id;
+        }
+      }
+      final shown = newestDue.values.toSet();
+      for (final doc in added) {
+        final n = LedgerNotice.fromDoc(doc);
         // Phòng hờ: chỉ hiện lời nhắc gửi cho đúng mình, không phải mình gửi.
-        final data = change.doc.data() ?? const {};
+        final data = doc.data() ?? const {};
         if (data['toUid'] != me || data['fromUid'] == me) continue;
         final deliverAt = (data['deliverAt'] as Timestamp?)?.toDate();
         try {
           final id = n.id.hashCode & 0x7fffffff;
           final title = '${n.fromName} nhắc nợ · ${n.ledgerName}';
-          if (deliverAt != null && deliverAt.isAfter(DateTime.now())) {
+          if (deliverAt != null && deliverAt.isAfter(now)) {
             // Lời nhắc hẹn giờ: đặt lịch ngay trên máy người nợ.
             await NotificationService.schedule(
                 at: deliverAt, title: title, body: n.message, id: id);
-          } else {
+          } else if (shown.contains(doc.id)) {
             await NotificationService.show(
                 id: id, title: title, body: n.message);
           }
-          await change.doc.reference.update({
+          await doc.reference.update({
             'delivered': true,
             'deliveredAt': FieldValue.serverTimestamp(),
           });

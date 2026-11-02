@@ -7,6 +7,7 @@ import '../../services/app_services.dart';
 import '../../services/ledger_service.dart';
 import '../../widgets/app_icons.dart';
 import '../../widgets/common.dart';
+import '../../services/friendly_error.dart';
 
 /// Chủ sổ bật sổ chung cho nhóm: chọn mình là thành viên nào rồi tạo sổ
 /// trên Firestore. Trả về true nếu bật thành công.
@@ -26,49 +27,14 @@ Future<bool> startSharing(
   final guess = members
       .where((m) => myName.isNotEmpty && m.name.trim().toLowerCase() == myName)
       .firstOrNull;
-  final ownerId = await showDialog<int>(
-    context: context,
-    builder: (ctx) {
-      int? picked = guess?.id;
-      return StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          title: const Text('Bật sổ chung'),
-          content: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Text(
-                  'Mỗi người dùng tài khoản riêng: bạn gửi mã mời cho từng '
-                  'thành viên, họ nhập mã là xem được sổ và số nợ của mình. '
-                  'Chỉ bạn (chủ sổ) ghi khoản chi và gửi nhắc nợ.\n\n'
-                  'Bạn là ai trong nhóm này?'),
-              const SizedBox(height: 8),
-              RadioGroup<int>(
-                groupValue: picked,
-                onChanged: (v) => setState(() => picked = v),
-                child: Column(children: [
-                  for (final m in members)
-                    RadioListTile<int>(
-                      value: m.id!,
-                      title: Text(m.name),
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                    ),
-                ]),
-              ),
-            ]),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Hủy')),
-            FilledButton(
-              onPressed: picked == null ? null : () => Navigator.pop(ctx, picked),
-              child: const Text('Bật sổ chung'),
-            ),
-          ],
-        ),
-      );
-    },
-  );
+  final ownerId = await pickOwnerMember(context, members,
+      initial: guess?.id,
+      title: 'Bật sổ chung',
+      intro: 'Mỗi người dùng tài khoản riêng: bạn gửi mã mời cho từng '
+          'thành viên, họ nhập mã là xem được sổ và số nợ của mình. '
+          'Chỉ bạn (chủ sổ) ghi khoản chi và gửi nhắc nợ.\n\n'
+          'Bạn là ai trong nhóm này?',
+      okLabel: 'Bật sổ chung');
   if (ownerId == null) return false;
   try {
     await service.share(groupId, ownerMemberId: ownerId);
@@ -77,7 +43,86 @@ Future<bool> startSharing(
     }
     return true;
   } catch (e) {
-    if (context.mounted) showSnack(context, 'Không bật được sổ chung: $e');
+    if (context.mounted) showSnack(context, 'Không bật được sổ chung: ${friendlyError(e)}');
+    return false;
+  }
+}
+
+/// Hộp thoại chọn "Bạn là ai trong nhóm". Trả về id thành viên, null nếu hủy.
+Future<int?> pickOwnerMember(
+  BuildContext context,
+  List<Member> members, {
+  int? initial,
+  required String title,
+  required String intro,
+  required String okLabel,
+}) =>
+    showDialog<int>(
+      context: context,
+      builder: (ctx) {
+        int? picked = initial;
+        return StatefulBuilder(
+          builder: (ctx, setState) => AlertDialog(
+            title: Text(title),
+            content: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text(intro),
+                const SizedBox(height: 8),
+                RadioGroup<int>(
+                  groupValue: picked,
+                  onChanged: (v) => setState(() => picked = v),
+                  child: Column(children: [
+                    for (final m in members)
+                      RadioListTile<int>(
+                        value: m.id!,
+                        title: Text(m.name),
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                      ),
+                  ]),
+                ),
+              ]),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Hủy')),
+              FilledButton(
+                onPressed:
+                    picked == null ? null : () => Navigator.pop(ctx, picked),
+                child: Text(okLabel),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+/// Chủ sổ chọn lại "Bạn là ai trong nhóm" (lỡ chọn nhầm lúc bật sổ chung).
+/// Trả về true nếu đã đổi.
+Future<bool> changeOwnerMember(
+    BuildContext context, SharedLedger ledger, List<Member> members) async {
+  final picked = await pickOwnerMember(context, members,
+      initial: ledger.ownerMemberId,
+      title: 'Bạn là ai trong nhóm?',
+      intro: 'Chỉ người đang nợ thành viên này mới nhận được nhắc nợ của bạn.',
+      okLabel: 'Lưu');
+  if (picked == null || picked == ledger.ownerMemberId) return false;
+  final taken = ledger.uidsOf(picked).where((u) => u != ledger.ownerUid);
+  if (taken.isNotEmpty) {
+    if (context.mounted) {
+      showSnack(context,
+          'Thành viên này đã có tài khoản khác đứng tên. Gỡ tài khoản đó trước.');
+    }
+    return false;
+  }
+  try {
+    await App.shared!.setOwnerMember(ledger.id, picked);
+    return true;
+  } catch (e) {
+    if (context.mounted) {
+      showSnack(context, 'Không đổi được: ${friendlyError(e)}');
+    }
     return false;
   }
 }
@@ -90,7 +135,7 @@ Future<void> showInviteDialog(
   try {
     code = await service.createInvite(ledger, member);
   } catch (e) {
-    if (context.mounted) showSnack(context, 'Không tạo được mã mời: $e');
+    if (context.mounted) showSnack(context, 'Không tạo được mã mời: ${friendlyError(e)}');
     return;
   }
   if (!context.mounted) return;
@@ -168,7 +213,7 @@ Future<void> sendReminder(
       showSnack(context, 'Đã gửi nhắc nợ tới ${debtor.name}');
     }
   } catch (e) {
-    if (context.mounted) showSnack(context, 'Không gửi được: $e');
+    if (context.mounted) showSnack(context, 'Không gửi được: ${friendlyError(e)}');
   }
 }
 

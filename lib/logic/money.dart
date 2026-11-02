@@ -14,6 +14,9 @@ String formatVnd(int amount) {
 
 /// Đọc số tiền người dùng gõ: "150000", "150.000", "150,000", "150k", "1.5tr".
 /// Trả về null nếu không hợp lệ.
+/// Số tiền lớn nhất nhận vào: 1.000 tỷ đồng, đủ xa giới hạn của int.
+const maxVnd = 1000000000000;
+
 int? parseVnd(String input) {
   var s = input.trim().toLowerCase().replaceAll(' ', '').replaceAll('₫', '');
   s = s.replaceAll('đ', '').replaceAll('vnd', '');
@@ -31,13 +34,23 @@ int? parseVnd(String input) {
   if (multiplier == 1) {
     // Không có hậu tố: dấu . và , là dấu phân cách hàng nghìn.
     s = s.replaceAll('.', '').replaceAll(',', '');
+    if (!RegExp(r'^\d+$').hasMatch(s)) return null;
     final v = int.tryParse(s);
-    return (v == null || v < 0) ? null : v;
+    return (v == null || v > maxVnd) ? null : v;
   }
-  // Có hậu tố: cho phép số thập phân, ví dụ "1.5tr" hoặc "1,5tr".
-  final v = double.tryParse(s.replaceAll(',', '.'));
-  if (v == null || v < 0) return null;
-  return (v * multiplier).round();
+  // Có hậu tố mà số có dạng nghìn "2.500k" / "1,200k": dấu . , là phân
+  // cách hàng nghìn (2.500.000 ₫), không phải dấu thập phân.
+  if (RegExp(r'^\d{1,3}([.,]\d{3})+$').hasMatch(s)) {
+    s = s.replaceAll('.', '').replaceAll(',', '');
+  }
+  // Còn lại cho phép số thập phân, ví dụ "1.5tr" hoặc "1,5tr". Chỉ nhận
+  // chữ số và một dấu thập phân (chặn "1e309k", "-5k", "Infinity").
+  s = s.replaceAll(',', '.');
+  if (!RegExp(r'^\d+(\.\d+)?$').hasMatch(s)) return null;
+  final v = double.tryParse(s);
+  if (v == null || !v.isFinite) return null;
+  final result = (v * multiplier).round();
+  return result > maxVnd ? null : result;
 }
 
 /// Chia đều [amount] cho [memberIds].

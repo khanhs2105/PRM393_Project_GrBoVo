@@ -16,6 +16,7 @@ import '../logic/growth.dart';
 import '../logic/plans.dart';
 import '../models/bank.dart';
 import 'auth_service.dart';
+import 'avatar_cache.dart';
 import 'ledger_service.dart';
 import 'notification_service.dart';
 
@@ -35,6 +36,9 @@ class App {
 
   /// uid của tài khoản đang mở dữ liệu, null nếu chưa mở.
   static String? openedUid;
+
+  /// Có DB đang mở (kể cả sau khi đăng xuất, khi openedUid đã là null).
+  static bool _dbOpen = false;
 
   /// Đăng nhập Firebase. null nếu Firebase chưa cấu hình được
   /// (thiếu google-services.json...), khi đó [firebaseError] cho biết lý do.
@@ -57,7 +61,10 @@ class App {
 
   /// Hạn dùng thử Pro, null nếu chưa dùng thử lần nào.
   static DateTime? trialUntil;
-  static bool get trialUsed => trialUntil != null;
+  /// Máy này đã từng bật dùng thử (với bất kỳ tài khoản nào). Lưu ngoài DB
+  /// riêng từng tài khoản để tạo tài khoản mới không được dùng thử lại.
+  static bool _deviceTrialUsed = false;
+  static bool get trialUsed => trialUntil != null || _deviceTrialUsed;
   static bool get onTrial =>
       !purchasedPlan.isPro &&
       trialUntil != null &&
@@ -78,26 +85,46 @@ class App {
   /// Bản cũ dùng chung một file cho mọi tài khoản. File cũ đó (nếu còn)
   /// được giao cho tài khoản đăng nhập đầu tiên sau khi cập nhật, các tài
   /// khoản khác bắt đầu với sổ trống. Không còn tạo nhóm mẫu.
-  static Future<void> openForUser(String uid) {
-    if (openedUid == uid) return Future.value();
+  ///
+  /// [claimLegacy] hỏi người dùng có nhận file dữ liệu cũ đó không (file có
+  /// thể là của người khác từng dùng máy). Không hỏi được thì không nhận.
+  static Future<void> openForUser(String uid,
+      {Future<bool> Function()? claimLegacy}) {
+    if (openedUid == uid && _opening == null) return Future.value();
     // Đăng ký xong thì cả màn đăng ký lẫn AuthGate cùng gọi: dùng chung
     // một lần mở.
     if (_openingUid == uid && _opening != null) return _opening!;
     _openingUid = uid;
-    return _opening = _open(uid).whenComplete(() {
-      _opening = null;
-      _openingUid = null;
+    // Đổi tài khoản nhanh: đợi lần mở trước xong hẳn rồi mới mở DB mới,
+    // để không đóng nhầm DB hay để App.db lệch với openedUid.
+    final f = _lock
+        .then((_) => openedUid == uid ? null : _open(uid, claimLegacy));
+    _lock = f.then((_) {}, onError: (_) {});
+    late final Future<void> done;
+    done = f.whenComplete(() {
+      if (identical(_opening, done)) {
+        _opening = null;
+        _openingUid = null;
+      }
     });
+    return _opening = done;
   }
 
+  static Future<void> _lock = Future.value();
   static Future<void>? _opening;
   static String? _openingUid;
 
-  static Future<void> _open(String uid) async {
+  static Future<void> _open(
+      String uid, Future<bool> Function()? claimLegacy) async {
     final dir = await getDatabasesPath();
+    _deviceTrialFile = File(join(dir, 'device_trial_used'));
+    _deviceTrialUsed = await _deviceTrialFile!.exists();
     final path = join(dir, AppDatabase.fileNameFor(uid));
     final legacy = join(dir, AppDatabase.fileName);
-    if (!await databaseExists(path) && await databaseExists(legacy)) {
+    if (!await databaseExists(path) &&
+        await databaseExists(legacy) &&
+        claimLegacy != null &&
+        await claimLegacy()) {
       try {
         await File(legacy).rename(path);
         for (final ext in ['-wal', '-shm', '-journal']) {
@@ -108,8 +135,9 @@ class App {
         debugPrint('Không chuyển được dữ liệu cũ: $e');
       }
     }
-    if (openedUid != null) await db.close();
+    if (_dbOpen) await db.close();
     db = await AppDatabase.open(databaseFactory, path);
+    _dbOpen = true;
     openedUid = uid;
     groups = GroupRepository(db);
     expenses = ExpenseRepository(db);
@@ -146,6 +174,28 @@ class App {
     if (sync) await auth?.savePlan(p.name);
   }
 
+  static File? _deviceTrialFile;
+
+  /// Đăng xuất: hủy thông báo đã hẹn (nhắc nợ, hết dùng thử) của tài khoản
+  /// này, quên gói và ảnh đại diện đã tải, để người dùng sau trên cùng máy
+  /// không thấy.
+  static Future<void> signOut() async {
+    try {
+      await NotificationService.cancelAll();
+    } catch (e) {
+      debugPrint('Không hủy được thông báo: $e');
+    }
+    await auth?.signOut();
+    purchasedPlan = Plan.conNo;
+    trialUntil = null;
+    // Lần đăng nhập sau (kể cả cùng tài khoản) mở lại DB và đọc lại gói,
+    // dùng thử từ DB. DB cũ được đóng lúc đó, không đóng ngay để các màn
+    // đang bị gỡ không truy vấn vào DB đã đóng.
+    openedUid = null;
+    _refreshPlan();
+    AvatarCache.clear();
+  }
+
   static void _refreshPlan() {
     plan.value = effectivePlan(purchasedPlan, trialUntil, DateTime.now());
     planChanges.value++;
@@ -157,6 +207,12 @@ class App {
     if (trialUsed) return;
     final until = DateTime.now().add(const Duration(days: proTrialDays));
     await settings.set('pro_trial_until', until.toIso8601String());
+    try {
+      await _deviceTrialFile?.writeAsString(until.toIso8601String());
+      _deviceTrialUsed = true;
+    } catch (e) {
+      debugPrint('Không ghi được cờ dùng thử: $e');
+    }
     trialUntil = until;
     _refreshPlan();
     try {
