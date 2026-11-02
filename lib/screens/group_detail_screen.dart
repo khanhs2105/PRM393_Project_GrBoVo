@@ -51,6 +51,11 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
   /// Sổ chung của nhóm (null nếu chưa bật). Chỉ máy chủ sổ có nhóm này.
   SharedLedger? _ledger;
 
+  /// Nhóm đã bật sổ chung trên máy này chưa (theo khóa lưu trên máy).
+  /// Khác với `_ledger != null`: mất mạng thì `_ledger` vẫn null nhưng sổ
+  /// đã bật, không được tạo thêm sổ thứ hai.
+  bool _sharedOn = false;
+
   Future<(Group, GroupSummary)> _load() async {
     final result = (
       (await App.groups.getById(widget.groupId))!,
@@ -68,9 +73,15 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     try {
       final id = await service.ledgerIdOf(widget.groupId);
       if (id == null) {
-        if (mounted && _ledger != null) setState(() => _ledger = null);
+        if (mounted && (_ledger != null || _sharedOn)) {
+          setState(() {
+            _ledger = null;
+            _sharedOn = false;
+          });
+        }
         return;
       }
+      if (mounted && !_sharedOn) setState(() => _sharedOn = true);
       await service.publish(widget.groupId);
       final ledger = await service.fetch(id);
       if (mounted) setState(() => _ledger = ledger);
@@ -80,6 +91,18 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
   }
 
   Future<void> _startSharing(GroupSummary s) async {
+    // Sổ đã bật nhưng chưa tải được (mạng chậm / mất mạng): tải lại chứ
+    // không tạo sổ mới, nếu không thành viên ở sổ cũ sẽ bị bỏ rơi.
+    final id = await App.shared?.ledgerIdOf(widget.groupId);
+    if (!mounted) return;
+    if (id != null) {
+      await _syncShared();
+      if (mounted && _ledger == null) {
+        showSnack(context,
+            'Chưa tải được sổ chung. Kiểm tra mạng rồi thử lại nhé.');
+      }
+      return;
+    }
     if (await startSharing(context, widget.groupId, s.members)) {
       await _syncShared();
     }
@@ -309,7 +332,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                   onSelected: (v) {
                     switch (v) {
                       case 'invite':
-                        _ledger == null
+                        _ledger == null && !_sharedOn
                             ? _startSharing(s)
                             : showSnack(context,
                                 'Sổ chung đang bật. Vào tab Thành viên, bấm "Mời" cạnh từng người.');
@@ -426,6 +449,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                   _MembersTab(
                     summary: s,
                     ledger: _ledger,
+                    sharedOn: _sharedOn,
                     onStartSharing: () => _startSharing(s),
                     onInvite: (m) => _invite(s, m),
                     onRemoveAccount: _removeAccount,
@@ -902,11 +926,15 @@ class _MembersTab extends StatelessWidget {
   final VoidCallback onStartSharing;
   final void Function(Member) onInvite;
   final void Function(Member) onRemoveAccount;
+
+  /// Sổ chung đã bật trên máy này (kể cả khi chưa tải được [ledger]).
+  final bool sharedOn;
   const _MembersTab({
     required this.summary,
     required this.onOpen,
     required this.onAdd,
     required this.ledger,
+    required this.sharedOn,
     required this.onStartSharing,
     required this.onInvite,
     required this.onRemoveAccount,
@@ -944,9 +972,19 @@ class _MembersTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
       children: [
-        if (ledger == null) ...[
+        if (ledger == null && !sharedOn) ...[
           const SizedBox(height: 12),
           ShareBanner(onStart: onStartSharing),
+        ],
+        if (ledger == null && sharedOn) ...[
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(
+              child: Text('Chưa tải được sổ chung (kiểm tra mạng).',
+                  style: TextStyle(color: muted, fontSize: 13)),
+            ),
+            TextButton(onPressed: onStartSharing, child: const Text('Thử lại')),
+          ]),
         ],
         SectionHeader('Thành viên',
             trailing: ledger == null

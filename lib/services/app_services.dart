@@ -48,6 +48,10 @@ class App {
   /// bằng ValueListenableBuilder.
   static final plan = ValueNotifier<Plan>(Plan.conNo);
 
+  /// Tăng mỗi khi gói đã mua / dùng thử thay đổi, kể cả khi [plan] (gói
+  /// thực tế) không đổi, ví dụ mua Chủ Nợ trong lúc đang dùng thử.
+  static final planChanges = ValueNotifier<int>(0);
+
   /// Gói đã "mua" (không tính dùng thử).
   static Plan purchasedPlan = Plan.conNo;
 
@@ -142,8 +146,10 @@ class App {
     if (sync) await auth?.savePlan(p.name);
   }
 
-  static void _refreshPlan() =>
-      plan.value = effectivePlan(purchasedPlan, trialUntil, DateTime.now());
+  static void _refreshPlan() {
+    plan.value = effectivePlan(purchasedPlan, trialUntil, DateTime.now());
+    planChanges.value++;
+  }
 
   /// Bắt đầu dùng thử Pro $proTrialDays ngày (mỗi máy một lần) và hẹn thông
   /// báo trước khi hết hạn một ngày, để không ai bị bất ngờ.
@@ -178,7 +184,9 @@ class App {
   static Future<void> register(
       String name, String email, String password) async {
     await auth!.register(
-        name: name, email: email, password: password, plan: plan.value.name);
+        // Tài khoản mới luôn bắt đầu ở gói Con Nợ, không thừa hưởng gói
+        // (hay dùng thử) của tài khoản vừa đăng xuất trên cùng máy.
+        name: name, email: email, password: password, plan: Plan.conNo.name);
     // Tài khoản mới: bắt đầu gói Con Nợ trên sổ trống của chính mình.
     await openForUser(auth!.currentUser!.uid);
   }
