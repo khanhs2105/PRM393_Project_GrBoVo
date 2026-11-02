@@ -40,25 +40,45 @@ service cloud.firestore {
         && request.resource.data.ownerUid == request.auth.uid
         && request.resource.data.memberUids == [request.auth.uid];
 
-      // Chủ sổ sửa thoải mái nhưng không được đổi chủ.
-      allow update: if signedIn()
-        && ((resource.data.ownerUid == request.auth.uid
-             && request.resource.data.ownerUid == resource.data.ownerUid)
-            || isJoining(ledgerId));
+      // Chủ sổ sửa dữ liệu sổ nhưng không được đổi chủ, và chỉ được BỚT
+      // tài khoản (gỡ người). Thêm tài khoản chỉ đi qua mã mời (isJoining),
+      // để chủ sổ không tự kéo người lạ vào sổ rồi gửi nhắc nợ giả.
+      allow update: if signedIn() && (isOwnerEdit() || isJoining(ledgerId));
+
+      function noNewKeys(newMap, oldMap) {
+        return newMap.keys().toSet().difference(oldMap.keys().toSet()).size() == 0;
+      }
+
+      function isOwnerEdit() {
+        let o = resource.data;
+        let d = request.resource.data;
+        return o.ownerUid == request.auth.uid
+          && d.ownerUid == o.ownerUid
+          && d.memberUids.toSet().difference(o.memberUids.toSet()).size() == 0
+          && noNewKeys(d.links, o.links)
+          && noNewKeys(d.linkNames, o.linkNames);
+      }
 
       allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
 
       // Người được mời tự thêm mình vào sổ. Chỉ được đụng tới phần của
       // chính mình, và phải có mã mời đúng của sổ này: tài khoản đứng tên
-      // đúng thành viên ghi trong mã.
+      // đúng thành viên ghi trong mã. Mã chưa ai dùng, còn hạn, và phải
+      // được đánh dấu "đã dùng" bởi chính mình trong cùng lần ghi (batch).
+      // Người đã ở trong sổ không nhập mã khác để đổi sang đứng tên người khác.
       function isJoining(ledgerId) {
         let code = request.resource.data.lastJoinCode;
-        let inv = get(/databases/$(database)/documents/invites/$(code)).data;
+        let invPath = /databases/$(database)/documents/invites/$(code);
+        let inv = get(invPath).data;
         let me = request.auth.uid;
         let newData = request.resource.data;
         return newData.diff(resource.data).affectedKeys()
               .hasOnly(['memberUids', 'links', 'linkNames', 'lastJoinCode'])
+          && !(me in resource.data.links)
           && inv.ledgerId == ledgerId
+          && !('usedBy' in inv)
+          && inv.get('expiresAt', request.time) > request.time
+          && getAfter(invPath).data.get('usedBy', '') == me
           && newData.memberUids.toSet()
               == resource.data.memberUids.toSet().union([me].toSet())
           && newData.links.diff(resource.data.links).affectedKeys().hasOnly([me])
@@ -68,14 +88,28 @@ service cloud.firestore {
     }
 
     // Mã mời: ai đăng nhập cũng đọc được một mã nếu biết mã (không liệt kê
-    // được). Chỉ chủ sổ tạo / xóa mã của sổ mình.
+    // được). Chỉ chủ sổ tạo / xóa mã của sổ mình. Mã hết hạn sau tối đa
+    // 7 ngày và chỉ dùng được một lần.
     match /invites/{code} {
       allow get: if signedIn();
       allow list: if false;
       allow create: if signedIn()
         && request.resource.data.ownerUid == request.auth.uid
-        && ledgerData(request.resource.data.ledgerId).ownerUid == request.auth.uid;
-      allow update: if false;
+        && ledgerData(request.resource.data.ledgerId).ownerUid == request.auth.uid
+        && !('usedBy' in request.resource.data)
+        && request.resource.data.expiresAt is timestamp
+        && request.resource.data.expiresAt < request.time + duration.value(8, 'd');
+      // Người nhập mã đánh dấu "đã dùng" đúng một lần, cùng lúc với việc
+      // vào sổ (getAfter thấy mình đã đứng tên thành viên ghi trong mã).
+      allow update: if signedIn()
+        && !('usedBy' in resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['usedBy', 'usedAt'])
+        && request.resource.data.usedBy == request.auth.uid
+        && getAfter(/databases/$(database)/documents/ledgers/$(resource.data.ledgerId))
+            .data.lastJoinCode == code
+        && getAfter(/databases/$(database)/documents/ledgers/$(resource.data.ledgerId))
+            .data.links[request.auth.uid] == resource.data.memberId;
       allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
     }
 
@@ -89,7 +123,14 @@ service cloud.firestore {
         && request.resource.data.fromUid == request.auth.uid
         && ledgerData(request.resource.data.ledgerId).ownerUid == request.auth.uid
         && request.resource.data.toUid in ledgerData(request.resource.data.ledgerId).memberUids
-        && request.resource.data.toUid != request.auth.uid;
+        && request.resource.data.toUid != request.auth.uid
+        && request.resource.data.fromName is string
+        && request.resource.data.fromName.size() <= 100
+        && request.resource.data.ledgerName is string
+        && request.resource.data.ledgerName.size() <= 100
+        && request.resource.data.message is string
+        && request.resource.data.message.size() <= 1000
+        && request.resource.data.amount is int;
       allow update: if signedIn()
         && resource.data.toUid == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys()

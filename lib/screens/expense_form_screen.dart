@@ -127,6 +127,16 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
 
   int get _percentTotal => _percentWeights.values.fold(0, (a, b) => a + b);
 
+  /// Người có ô % gõ sai (chữ, âm, hoặc lớn hơn 100). Ô trống không tính.
+  /// Trước đây ô sai bị coi là 0% rồi chia lại cho người khác, tổng vẫn
+  /// báo đủ 100% nên lưu được với phần 0 ₫.
+  List<int> get _invalidPercentIds => [
+        for (final id in _selected)
+          if (_percent[id]!.text.trim().isNotEmpty &&
+              parsePercent(_percent[id]!.text) == null)
+            id,
+      ];
+
   Map<int, int> get _partWeights => {
         for (final id in _selected) id: _parts[id] ?? 1,
       };
@@ -146,7 +156,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
         if (_partsTotal == 0) return null;
         return splitByWeights(_partWeights, _amountValue, remainderTo: _paidBy);
       default:
-        if (_percentTotal == 0) return null;
+        if (_percentTotal == 0 || _invalidPercentIds.isNotEmpty) return null;
         return splitByWeights(_percentWeights, _amountValue,
             remainderTo: _paidBy);
     }
@@ -163,6 +173,14 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
       case SplitType.shares:
         if (_partsTotal == 0) return 'Phải có ít nhất 1 phần';
       case SplitType.percent:
+        final bad = _invalidPercentIds;
+        if (bad.isNotEmpty) {
+          final names = _members
+              .where((m) => bad.contains(m.id))
+              .map((m) => m.name)
+              .join(', ');
+          return 'Ô % của $names không hợp lệ (chỉ nhập số từ 0 đến 100)';
+        }
         if (_percentTotal != percentScale) {
           return 'Tổng phải đúng 100% (đang ${formatPercent(_percentTotal)})';
         }
@@ -203,6 +221,8 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
 
   void _onPercentTyped(int id) {
     _percentLocked.add(id);
+    // Ô đang gõ sai thì chưa chia lại, để người dùng thấy lỗi và sửa.
+    if (_invalidPercentIds.isNotEmpty) return;
     _rebalancePercent();
   }
 

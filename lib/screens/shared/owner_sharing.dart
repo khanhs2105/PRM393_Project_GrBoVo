@@ -103,7 +103,8 @@ Future<void> showInviteDialog(
       title: Text('Mời ${member.name}'),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
         const Text('Gửi mã này cho đúng người. Ai nhập mã sẽ đứng tên '
-            'thành viên này và nhận nhắc nợ của bạn.'),
+            'thành viên này và nhận nhắc nợ của bạn. Mã chỉ dùng được '
+            'một lần và hết hạn sau 7 ngày.'),
         const SizedBox(height: 16),
         SelectableText(code,
             textAlign: TextAlign.center,

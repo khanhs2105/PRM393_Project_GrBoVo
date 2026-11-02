@@ -17,9 +17,11 @@ class PlansScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Nâng cấp')),
-      body: ValueListenableBuilder<Plan>(
-        valueListenable: App.plan,
-        builder: (context, current, _) => ListView(
+      // Nghe planChanges chứ không chỉ App.plan: đang dùng thử mà mua Chủ Nợ
+      // thì gói thực tế không đổi nhưng các thẻ vẫn phải vẽ lại.
+      body: ValueListenableBuilder<int>(
+        valueListenable: App.planChanges,
+        builder: (context, tick, _) => ListView(
           padding: const EdgeInsets.all(16),
           children: [
             Text('Chọn đẳng cấp đòi nợ của bạn',
@@ -28,9 +30,11 @@ class PlansScreen extends StatelessWidget {
             const Text('Không tốn đồng nào thật. Đây là app chia tiền, '
                 'không phải app lấy tiền 😌'),
             const SizedBox(height: 16),
-            const _TrialCard(),
+            _TrialCard(tick: tick),
+            // "Đang dùng" theo gói đã mua: đang dùng thử vẫn mua được Chủ Nợ,
+            // và không hiện nút "Quay về làm Con Nợ" vô tác dụng.
             for (final plan in Plan.values)
-              _PlanCard(plan: plan, isCurrent: plan == current),
+              _PlanCard(plan: plan, isCurrent: plan == App.purchasedPlan),
           ],
         ),
       ),
@@ -146,8 +150,8 @@ class _RunawayBuyButtonState extends State<_RunawayBuyButton> {
             duration: const Duration(milliseconds: 1200)));
       return;
     }
-    await App.setPlan(widget.plan);
-    if (!mounted) return;
+    // Hiện hộp thoại trước rồi mới đổi gói: đổi gói xong thẻ này thành
+    // "Đang dùng", nút mua bị gỡ khỏi màn hình nên không hiện dialog được.
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -160,6 +164,7 @@ class _RunawayBuyButtonState extends State<_RunawayBuyButton> {
         ],
       ),
     );
+    await App.setPlan(widget.plan);
   }
 
   @override
@@ -180,7 +185,10 @@ class _RunawayBuyButtonState extends State<_RunawayBuyButton> {
 /// Thẻ dùng thử Pro $proTrialDays ngày: mỗi máy một lần, không cần thanh toán,
 /// hết hạn tự quay về Con Nợ.
 class _TrialCard extends StatelessWidget {
-  const _TrialCard();
+  /// Giá trị của [App.planChanges]: đổi là thẻ vẽ lại (trước đây thẻ là
+  /// `const` nên bấm dùng thử xong vẫn còn nút).
+  final int tick;
+  const _TrialCard({required this.tick});
 
   @override
   Widget build(BuildContext context) {

@@ -187,6 +187,9 @@ class LedgerService {
   // đăng nhập tài khoản khác trên cùng máy thì không nhận nhầm.
   String _key(int groupId) => 'ledger_${uid}_$groupId';
 
+  /// Thời hạn của một mã mời.
+  static const inviteTtl = Duration(days: 7);
+
   /// Id sổ chung của nhóm [groupId] trên máy này, null nếu chưa bật.
   Future<String?> ledgerIdOf(int groupId) async {
     if (uid == null || _local == null) return null;
@@ -202,23 +205,37 @@ class LedgerService {
   /// Bật sổ chung cho nhóm: tạo `ledgers/{id}` với chủ sổ là mình.
   Future<String> share(int groupId, {required int ownerMemberId}) async {
     final me = _requireUid();
+    // Nhóm đã có sổ chung thì dùng lại, không tạo sổ thứ hai (thành viên
+    // ở sổ cũ sẽ không bao giờ thấy cập nhật nữa).
+    final existing = await ledgerIdOf(groupId);
+    if (existing != null) return existing;
     final group = await GroupRepository(_local!).getById(groupId);
     if (group == null) throw StateError('Không tìm thấy nhóm');
     final doc = _ledgers.doc();
-    await doc.set({
-      'name': group.name,
-      'type': group.type,
-      'ownerUid': me,
-      'ownerName': _myName,
-      'ownerMemberId': ownerMemberId,
-      'memberUids': [me],
-      'links': {me: ownerMemberId},
-      'linkNames': {me: _myName},
-      'snapshot': await _snapshot(groupId),
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    }).timeout(_timeout);
+    // Lưu khóa trước khi ghi: offline thì lệnh ghi vẫn nằm trong hàng đợi
+    // và sẽ gửi khi có mạng, bấm lại không tạo thêm sổ.
     await _settings.set(_key(groupId), doc.id);
+    try {
+      await doc.set({
+        'name': group.name,
+        'type': group.type,
+        'ownerUid': me,
+        'ownerName': _myName,
+        'ownerMemberId': ownerMemberId,
+        'memberUids': [me],
+        'links': {me: ownerMemberId},
+        'linkNames': {me: _myName},
+        'snapshot': await _snapshot(groupId),
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }).timeout(_timeout);
+    } on TimeoutException {
+      // Mất mạng: lệnh ghi vẫn chờ trong hàng đợi, giữ khóa.
+      rethrow;
+    } catch (_) {
+      await _settings.set(_key(groupId), null);
+      rethrow;
+    }
     return doc.id;
   }
 
@@ -308,6 +325,8 @@ class LedgerService {
             'ownerUid': me,
             'ownerName': _myName,
             'createdAt': FieldValue.serverTimestamp(),
+            // Mã chỉ dùng một lần và hết hạn sau [inviteTtl].
+            'expiresAt': Timestamp.fromDate(DateTime.now().add(inviteTtl)),
           });
         }).timeout(_timeout);
         return code;
@@ -335,13 +354,39 @@ class LedgerService {
       throw const FormatException(
           'Đây là mã của sổ do bạn tạo. Gửi mã cho bạn bè để họ nhập nhé.');
     }
+    if (data['usedBy'] != null) {
+      throw const FormatException(
+          'Mã mời này đã được dùng. Nhờ chủ sổ tạo mã mới cho bạn nhé.');
+    }
+    final expires = data['expiresAt'];
+    if (expires is! Timestamp || expires.toDate().isBefore(DateTime.now())) {
+      throw const FormatException(
+          'Mã mời đã hết hạn. Nhờ chủ sổ tạo mã mới cho bạn nhé.');
+    }
     final ledgerId = data['ledgerId'] as String;
-    await _ledgers.doc(ledgerId).update({
-      'memberUids': FieldValue.arrayUnion([me]),
-      'links.$me': (data['memberId'] as num).toInt(),
-      'linkNames.$me': _myName,
-      'lastJoinCode': code,
-    }).timeout(_timeout);
+    // Đã ở trong sổ thì không nhập mã khác để đổi sang đứng tên người khác.
+    try {
+      final current = await fetch(ledgerId);
+      if (current != null && current.links.containsKey(me)) {
+        throw const FormatException('Bạn đã ở trong sổ này rồi.');
+      }
+    } on FirebaseException {
+      // Chưa là thành viên nên chưa đọc được sổ: bình thường.
+    }
+    // Vào sổ và đánh dấu mã đã dùng trong cùng một lần ghi: rules kiểm cả
+    // hai, mã không dùng lại được (kể cả sau khi chủ sổ gỡ tài khoản).
+    final batch = _db.batch()
+      ..update(_ledgers.doc(ledgerId), {
+        'memberUids': FieldValue.arrayUnion([me]),
+        'links.$me': (data['memberId'] as num).toInt(),
+        'linkNames.$me': _myName,
+        'lastJoinCode': code,
+      })
+      ..update(_invites.doc(code), {
+        'usedBy': me,
+        'usedAt': FieldValue.serverTimestamp(),
+      });
+    await batch.commit().timeout(_timeout);
     return ledgerId;
   }
 
