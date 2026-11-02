@@ -21,6 +21,7 @@ import '../models/settlement.dart';
 import '../services/app_services.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/pro_prompts.dart';
 import '../widgets/shake_picker.dart';
 import '../widgets/ui.dart';
 import 'activity_screen.dart';
@@ -56,6 +57,63 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     _reload();
   }
 
+  /// Mở màn thêm khoản chi / trả tiền. Có kết quả thì có thể đề nghị dùng
+  /// thử Pro (sau bill đầu tiên) hoặc hiện quảng cáo ở bản Free.
+  Future<void> _openForResult(Widget screen) async {
+    final done = await Navigator.push<bool>(
+        context, MaterialPageRoute(builder: (_) => screen));
+    _reload();
+    if (done != true) return;
+    final (_, s) = await _future;
+    if (!mounted) return;
+    await afterResult(context,
+        memberCount: s.members.length, expenseCount: s.expenses.length);
+  }
+
+  /// Nhân bản nhóm cho chuyến sau: giữ thành viên, bỏ khoản chi.
+  Future<void> _duplicateGroup(Group g) async {
+    final controller = TextEditingController(text: '${g.name} (lần sau)');
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nhân bản nhóm'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('Nhóm mới có đủ thành viên và tài khoản ngân hàng, '
+              'chưa có khoản chi nào. Khỏi phải mời lại từ đầu.'),
+          const SizedBox(height: 12),
+          TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Tên nhóm mới'),
+          ),
+        ]),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Hủy')),
+          FilledButton(
+            onPressed: () {
+              final v = controller.text.trim();
+              if (v.isNotEmpty) Navigator.pop(ctx, v);
+            },
+            child: const Text('Tạo nhóm'),
+          ),
+        ],
+      ),
+    );
+    if (name == null) return;
+    final id = await App.groups.duplicate(g.id!, name);
+    await App.activities.log(
+      groupId: id,
+      groupName: name,
+      kind: ActivityKind.groupCreated,
+      message: 'Tạo nhóm "$name" từ nhóm "${g.name}"',
+    );
+    if (!mounted) return;
+    showSnack(context, 'Đã tạo nhóm "$name"');
+    await Navigator.pushReplacement(context,
+        MaterialPageRoute(builder: (_) => GroupDetailScreen(groupId: id)));
+  }
+
   Future<void> _deleteGroup(Group g) async {
     final ok = await confirm(context, 'Xóa nhóm "${g.name}"?',
         'Toàn bộ khoản chi và lịch sử trả tiền của nhóm sẽ bị xóa.',
@@ -86,6 +144,13 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
 
   /// Xuất file CSV (mở được bằng Excel, Google Sheets) rồi chia sẻ.
   Future<void> _exportCsv(Group g, GroupSummary s) async {
+    if (!App.plan.value.canExportReport) {
+      final ok = await showProUpsell(context,
+          title: 'Gửi bảng tổng kết cho cả nhóm',
+          message: 'Xuất báo cáo CSV (mở bằng Excel) là tính năng Pro. '
+              'Chia sẻ tóm tắt bằng chữ vẫn miễn phí.');
+      if (!ok || !mounted) return;
+    }
     try {
       final dir = await getTemporaryDirectory();
       final safeName = removeDiacritics(g.name)
@@ -171,6 +236,8 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                         _shareSummary(group, s);
                       case 'csv':
                         _exportCsv(group, s);
+                      case 'duplicate':
+                        _duplicateGroup(group);
                       case 'edit':
                         _open(GroupFormScreen(group: group));
                       case 'delete':
@@ -193,6 +260,11 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                         child: ListTile(
                             leading: Icon(AppIcons.sheet),
                             title: Text('Xuất file CSV'))),
+                    PopupMenuItem(
+                        value: 'duplicate',
+                        child: ListTile(
+                            leading: Icon(AppIcons.copy),
+                            title: Text('Nhân bản nhóm'))),
                     PopupMenuDivider(),
                     PopupMenuItem(
                         value: 'edit',
@@ -237,12 +309,14 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                     summary: s,
                     onOpen: (e) => _open(
                         ExpenseDetailScreen(group: group, expenseId: e.id!)),
-                    onAdd: () => _open(ExpenseFormScreen(groupId: group.id!)),
+                    onAdd: () =>
+                        _openForResult(ExpenseFormScreen(groupId: group.id!)),
                   ),
                   _BalancesTab(
                     summary: s,
-                    onPay: (t) => _open(PaymentScreen(group: group, transfer: t)),
-                    onRecord: () => _open(RecordPaymentScreen(
+                    onPay: (t) =>
+                        _openForResult(PaymentScreen(group: group, transfer: t)),
+                    onRecord: () => _openForResult(RecordPaymentScreen(
                         group: group,
                         members: s.members,
                         transfers: s.transfers)),
@@ -258,7 +332,8 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
               ),
             ]),
             floatingActionButton: FloatingActionButton.extended(
-              onPressed: () => _open(ExpenseFormScreen(groupId: group.id!)),
+              onPressed: () =>
+                  _openForResult(ExpenseFormScreen(groupId: group.id!)),
               icon: const Icon(AppIcons.plus),
               label: const Text('Thêm khoản chi'),
             ),

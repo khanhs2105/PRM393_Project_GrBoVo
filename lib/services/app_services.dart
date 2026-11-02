@@ -11,9 +11,11 @@ import '../data/group_repository.dart';
 import '../data/seed.dart';
 import '../data/settings_repository.dart';
 import '../data/settlement_repository.dart';
+import '../logic/growth.dart';
 import '../logic/plans.dart';
 import '../models/bank.dart';
 import 'auth_service.dart';
+import 'notification_service.dart';
 
 /// Các đối tượng dùng chung toàn app, khởi tạo một lần trong main().
 /// App nhỏ nên dùng biến toàn cục cho đơn giản, không cần Provider.
@@ -31,8 +33,25 @@ class App {
   static AuthService? auth;
   static Object? firebaseError;
 
-  /// Gói đang dùng. Màn hình nào cần thì lắng nghe bằng ValueListenableBuilder.
+  /// Gói đang áp dụng (đã tính dùng thử). Màn hình nào cần thì lắng nghe
+  /// bằng ValueListenableBuilder.
   static final plan = ValueNotifier<Plan>(Plan.conNo);
+
+  /// Gói đã "mua" (không tính dùng thử).
+  static Plan purchasedPlan = Plan.conNo;
+
+  /// Hạn dùng thử Pro, null nếu chưa dùng thử lần nào.
+  static DateTime? trialUntil;
+  static bool get trialUsed => trialUntil != null;
+  static bool get onTrial =>
+      !purchasedPlan.isPro &&
+      trialUntil != null &&
+      DateTime.now().isBefore(trialUntil!);
+
+  /// Lần mở app đầu tiên trên máy: không hiện quảng cáo.
+  static bool firstSession = false;
+
+  static final ads = AdPolicy();
 
   static Future<void> init() async {
     db = await AppDatabase.open(
@@ -43,7 +62,14 @@ class App {
     settings = SettingsRepository(db);
     activities = ActivityRepository(db);
     banks = parseBanks(await rootBundle.loadString('assets/banks.json'));
-    plan.value = await settings.currentPlan();
+    purchasedPlan = await settings.currentPlan();
+    final trial = await settings.get('pro_trial_until');
+    trialUntil = trial == null ? null : DateTime.tryParse(trial);
+    firstSession = await settings.get('first_open') == null;
+    if (firstSession) {
+      await settings.set('first_open', DateTime.now().toIso8601String());
+    }
+    _refreshPlan();
     await seedIfEmpty(db);
   }
 
@@ -60,8 +86,34 @@ class App {
   /// Đổi gói trên máy và đồng bộ lên hồ sơ Firestore nếu đang đăng nhập.
   static Future<void> setPlan(Plan p, {bool sync = true}) async {
     await settings.setPlan(p);
-    plan.value = p;
+    purchasedPlan = p;
+    _refreshPlan();
     if (sync) await auth?.savePlan(p.name);
+  }
+
+  static void _refreshPlan() =>
+      plan.value = effectivePlan(purchasedPlan, trialUntil, DateTime.now());
+
+  /// Bắt đầu dùng thử Pro $proTrialDays ngày (mỗi máy một lần) và hẹn thông
+  /// báo trước khi hết hạn một ngày, để không ai bị bất ngờ.
+  static Future<void> startTrial() async {
+    if (trialUsed) return;
+    final until = DateTime.now().add(const Duration(days: proTrialDays));
+    await settings.set('pro_trial_until', until.toIso8601String());
+    trialUntil = until;
+    _refreshPlan();
+    try {
+      if (await NotificationService.requestPermission()) {
+        await NotificationService.schedule(
+          at: until.subtract(const Duration(days: 1)),
+          title: 'Pro dùng thử còn 1 ngày',
+          body: 'Mai hết dùng thử. App tự quay về gói Con Nợ, '
+              'không trừ đồng nào. Thích thì nâng cấp nhé 😎',
+        );
+      }
+    } catch (e) {
+      debugPrint('Không hẹn được thông báo hết dùng thử: $e');
+    }
   }
 
   /// Đăng nhập rồi lấy lại gói đã lưu trên Firestore (nếu có).

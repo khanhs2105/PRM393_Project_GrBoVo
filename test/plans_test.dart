@@ -5,12 +5,22 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('giới hạn nhóm theo gói', () {
-    expect(Plan.conNo.canCreateGroup(1), isTrue);
-    expect(Plan.conNo.canCreateGroup(2), isFalse);
-    expect(Plan.chuNo.canCreateGroup(100), isTrue);
+  test('Free không chặn thao tác cốt lõi, Pro mở tính năng nâng cao', () {
+    expect(Plan.conNo.isPro, isFalse);
+    expect(Plan.conNo.canSplitUnevenly, isFalse);
+    expect(Plan.conNo.canExportReport, isFalse);
+    expect(Plan.conNo.canAdvancedReminders, isFalse);
+    expect(Plan.conNo.showsAds, isTrue);
     expect(Plan.conNo.canAttachReceipt, isFalse);
+    for (final p in [Plan.chuNo, Plan.doiNoThue]) {
+      expect(p.isPro, isTrue);
+      expect(p.canSplitUnevenly, isTrue);
+      expect(p.canExportReport, isTrue);
+      expect(p.canAdvancedReminders, isTrue);
+      expect(p.showsAds, isFalse);
+    }
     expect(Plan.doiNoThue.canShakeToPick, isTrue);
+    expect(Plan.chuNo.canShakeToPick, isFalse);
   });
 
   test('tin nhắn nhắc nợ có tên, số tiền và xoay vòng câu', () {

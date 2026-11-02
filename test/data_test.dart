@@ -143,6 +143,31 @@ void main() {
     expect(await groups.deleteMember(ids[2]), isTrue);
   });
 
+  test('nhân bản nhóm: chép thành viên, không chép khoản chi', () async {
+    final (id, ids) = await makeGroup();
+    await groups.updateMember((await groups.members(id))
+        .first
+        .copyWith(bankBin: '970436', accountNo: '0123'));
+    await expenses.save(Expense(
+      groupId: id,
+      title: 'Lẩu',
+      amount: 300000,
+      paidBy: ids[0],
+      splitType: SplitType.equal,
+      shares: {for (final m in ids) m: 100000},
+      date: DateTime(2026, 11, 1),
+    ));
+    final copyId = await groups.duplicate(id, 'Test lần 2');
+    expect(copyId, isNot(id));
+    expect((await groups.getById(copyId))!.name, 'Test lần 2');
+    final copied = await groups.members(copyId);
+    expect(copied.map((m) => m.name), ['An', 'Bình', 'Chi']);
+    expect(copied.first.accountNo, '0123');
+    expect(copied.every((m) => !ids.contains(m.id)), isTrue);
+    expect(await expenses.byGroup(copyId), isEmpty);
+    expect((await groups.members(id)).length, 3);
+  });
+
   test('xóa nhóm xóa luôn dữ liệu con', () async {
     final (gid, _) = await makeGroup();
     await groups.delete(gid);

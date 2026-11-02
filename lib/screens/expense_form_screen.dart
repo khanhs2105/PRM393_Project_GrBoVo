@@ -15,8 +15,8 @@ import '../models/member.dart';
 import '../services/app_services.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/pro_prompts.dart';
 import '../widgets/ui.dart';
-import 'plans_screen.dart';
 import '../widgets/app_icons.dart';
 
 /// Thêm hoặc sửa một khoản chi.
@@ -194,6 +194,13 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     }
   }
 
+  /// Bản Free chỉ chia đều. Khoản chi cũ đã chia kiểu khác thì vẫn giữ được
+  /// kiểu đó khi sửa.
+  bool _splitLocked(String type) =>
+      type != SplitType.equal &&
+      type != widget.expense?.splitType &&
+      !App.plan.value.canSplitUnevenly;
+
   void _onPercentTyped(int id) {
     _percentLocked.add(id);
     _rebalancePercent();
@@ -208,16 +215,10 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
 
   Future<void> _pickReceipt(ImageSource source) async {
     if (!App.plan.value.canAttachReceipt) {
-      final go = await confirm(
-          context,
-          'Tính năng của Chủ Nợ 😎',
-          'Gói Con Nợ không được đính kèm hóa đơn. Muốn có bằng chứng thì phải nâng cấp.',
-          ok: 'Xem các gói');
-      if (go && mounted) {
-        await Navigator.push(
-            context, MaterialPageRoute(builder: (_) => const PlansScreen()));
-      }
-      return;
+      final ok = await showProUpsell(context,
+          title: 'Ảnh hóa đơn là tính năng Pro 😎',
+          message: 'Đính kèm ảnh hóa đơn làm bằng chứng để cả nhóm cùng xem.');
+      if (!ok || !mounted) return;
     }
     // image_picker tự xin quyền camera khi cần.
     final picked = await ImagePicker()
@@ -642,15 +643,33 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
               width: double.infinity,
               child: SegmentedButton<String>(
                 showSelectedIcon: false,
-                segments: const [
-                  ButtonSegment(value: SplitType.equal, label: Text('Đều')),
-                  ButtonSegment(value: SplitType.exact, label: Text('Số tiền')),
-                  ButtonSegment(value: SplitType.shares, label: Text('Phần')),
-                  ButtonSegment(value: SplitType.percent, label: Text('%')),
+                segments: [
+                  const ButtonSegment(
+                      value: SplitType.equal, label: Text('Đều')),
+                  for (final (type, label) in const [
+                    (SplitType.exact, 'Số tiền'),
+                    (SplitType.shares, 'Phần'),
+                    (SplitType.percent, '%'),
+                  ])
+                    ButtonSegment(
+                      value: type,
+                      label: Text(label),
+                      icon: _splitLocked(type)
+                          ? const Icon(AppIcons.lock, size: 14)
+                          : null,
+                    ),
                 ],
                 selected: {_splitType},
-                onSelectionChanged: (v) {
-                  setState(() => _splitType = v.first);
+                onSelectionChanged: (v) async {
+                  final type = v.first;
+                  if (_splitLocked(type)) {
+                    final ok = await showProUpsell(context,
+                        title: 'Bill này có người ăn thêm?',
+                        message: 'Chia theo số tiền, theo phần hoặc theo % '
+                            'là tính năng Pro. Bản Free chia đều thoải mái.');
+                    if (!ok || !mounted) return;
+                  }
+                  setState(() => _splitType = type);
                   if (_splitType == SplitType.percent && _percentTotal == 0) {
                     _fillEqualPercent();
                   }
@@ -700,7 +719,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                     title: const Text('Ảnh hóa đơn'),
                     subtitle: plan.canAttachReceipt
                         ? null
-                        : const Text('Cần gói Chủ Nợ trở lên'),
+                        : const Text('Tính năng Pro (Chủ Nợ trở lên)'),
                     trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                       if (!plan.canAttachReceipt)
                         const Padding(
