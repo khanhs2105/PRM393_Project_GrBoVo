@@ -15,6 +15,7 @@ import '../logic/growth.dart';
 import '../logic/plans.dart';
 import '../models/bank.dart';
 import 'auth_service.dart';
+import 'ledger_service.dart';
 import 'notification_service.dart';
 
 /// Các đối tượng dùng chung toàn app, khởi tạo một lần trong main().
@@ -31,6 +32,9 @@ class App {
   /// Đăng nhập Firebase. null nếu Firebase chưa cấu hình được
   /// (thiếu google-services.json...), khi đó [firebaseError] cho biết lý do.
   static AuthService? auth;
+
+  /// Sổ chung nhiều tài khoản trên Firestore. null nếu Firebase lỗi.
+  static LedgerService? shared;
   static Object? firebaseError;
 
   /// Gói đang áp dụng (đã tính dùng thử). Màn hình nào cần thì lắng nghe
@@ -61,6 +65,7 @@ class App {
     settlements = SettlementRepository(db);
     settings = SettingsRepository(db);
     activities = ActivityRepository(db);
+    shared?.attach(db);
     banks = parseBanks(await rootBundle.loadString('assets/banks.json'));
     purchasedPlan = await settings.currentPlan();
     final trial = await settings.get('pro_trial_until');
@@ -77,6 +82,7 @@ class App {
     try {
       await Firebase.initializeApp();
       auth = AuthService();
+      shared = LedgerService();
     } catch (e) {
       firebaseError = e;
       debugPrint('Firebase chưa sẵn sàng: $e');

@@ -137,3 +137,23 @@ users/{uid}/backups/latest
 
 Dữ liệu nhóm vẫn lưu chính trên máy bằng SQLite (dùng được khi không có mạng). Firestore lưu hồ sơ
 tài khoản và bản sao lưu để chuyển sang máy khác.
+
+## Sổ chung nhiều tài khoản (mời thành viên, nhắc nợ)
+
+Xem [docs/so-chung.md](so-chung.md). Nhớ dán lại `firestore.rules` mới vào Firebase Console
+(tab **Rules** > **Publish**), không thì mời và nhắc nợ báo `PERMISSION_DENIED`.
+
+```
+ledgers/{ledgerId}
+  name, type, ownerUid, ownerName, ownerMemberId,
+  memberUids: [uid...],          tài khoản trong sổ (kể cả chủ sổ)
+  links:      { uid: memberId }, tài khoản nào đứng tên thành viên nào
+  linkNames:  { uid: tên },
+  snapshot:   { members: [...], expenses: [...], settlements: [...] },
+  createdAt, updatedAt, lastJoinCode
+invites/{mã 6 ký tự}
+  ledgerId, ledgerName, memberId, memberName, ownerUid, ownerName, createdAt
+notifications/{id}
+  ledgerId, ledgerName, fromUid, fromName, toUid, amount, message,
+  delivered, createdAt, deliveredAt
+```

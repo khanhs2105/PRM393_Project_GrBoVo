@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import '../data/group_summary.dart';
 import '../logic/categories.dart';
 import '../logic/expense_filter.dart';
+import '../logic/ledger_snapshot.dart';
 import '../logic/export.dart';
 import '../logic/money.dart';
 import '../logic/plans.dart';
@@ -19,6 +20,7 @@ import '../models/group.dart';
 import '../models/member.dart';
 import '../models/settlement.dart';
 import '../services/app_services.dart';
+import '../services/ledger_service.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/pro_prompts.dart';
@@ -31,6 +33,7 @@ import 'group_form_screen.dart';
 import 'member_form_screen.dart';
 import 'payment_screen.dart';
 import 'record_payment_screen.dart';
+import 'shared/owner_sharing.dart';
 import 'stats_screen.dart';
 import '../widgets/app_icons.dart';
 
@@ -45,10 +48,85 @@ class GroupDetailScreen extends StatefulWidget {
 class _GroupDetailScreenState extends State<GroupDetailScreen> {
   late Future<(Group, GroupSummary)> _future = _load();
 
-  Future<(Group, GroupSummary)> _load() async => (
-        (await App.groups.getById(widget.groupId))!,
-        await GroupSummary.load(App.db, widget.groupId),
-      );
+  /// Sổ chung của nhóm (null nếu chưa bật). Chỉ máy chủ sổ có nhóm này.
+  SharedLedger? _ledger;
+
+  Future<(Group, GroupSummary)> _load() async {
+    final result = (
+      (await App.groups.getById(widget.groupId))!,
+      await GroupSummary.load(App.db, widget.groupId),
+    );
+    _syncShared();
+    return result;
+  }
+
+  /// Đẩy dữ liệu mới nhất lên sổ chung rồi đọc lại danh sách tài khoản
+  /// đã tham gia. Chạy nền, lỗi mạng thì giữ trạng thái cũ.
+  Future<void> _syncShared() async {
+    final service = App.shared;
+    if (service == null) return;
+    try {
+      final id = await service.ledgerIdOf(widget.groupId);
+      if (id == null) {
+        if (mounted && _ledger != null) setState(() => _ledger = null);
+        return;
+      }
+      await service.publish(widget.groupId);
+      final ledger = await service.fetch(id);
+      if (mounted) setState(() => _ledger = ledger);
+    } catch (e) {
+      debugPrint('Không đọc được sổ chung: $e');
+    }
+  }
+
+  Future<void> _startSharing(GroupSummary s) async {
+    if (await startSharing(context, widget.groupId, s.members)) {
+      await _syncShared();
+    }
+  }
+
+  Future<void> _invite(GroupSummary s, Member m) async {
+    var ledger = _ledger;
+    if (ledger == null) {
+      await _startSharing(s);
+      ledger = _ledger;
+    }
+    if (ledger == null || !mounted) return;
+    await showInviteDialog(context, ledger, m);
+  }
+
+  /// Chủ sổ gỡ tài khoản đã nhận nhầm thành viên.
+  Future<void> _removeAccount(Member m) async {
+    final ledger = _ledger;
+    if (ledger == null) return;
+    final uids = ledger.uidsOf(m.id).where((u) => u != ledger.ownerUid);
+    if (uids.isEmpty) return;
+    final ok = await confirm(
+        context,
+        'Gỡ tài khoản khỏi ${m.name}?',
+        'Tài khoản ${ledger.accountNameOf(m.id)} sẽ không xem được sổ và '
+            'không nhận nhắc nợ nữa. Bạn có thể mời lại bằng mã mới.',
+        ok: 'Gỡ');
+    if (!ok) return;
+    try {
+      for (final u in uids) {
+        await App.shared!.removeAccount(ledger.id, u);
+      }
+      await _syncShared();
+    } catch (e) {
+      if (mounted) showSnack(context, 'Không gỡ được: $e');
+    }
+  }
+
+  Future<void> _remind(GroupSummary s, Transfer t, String toUid) async {
+    final ledger = _ledger;
+    if (ledger == null) return;
+    await sendReminder(context,
+        ledger: ledger,
+        debtor: s.memberById(t.fromId),
+        toUid: toUid,
+        amount: t.amount);
+  }
 
   void _reload() => setState(() => _future = _load());
 
@@ -119,6 +197,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
         'Toàn bộ khoản chi và lịch sử trả tiền của nhóm sẽ bị xóa.',
         ok: 'Xóa');
     if (!ok) return;
+    await App.shared?.unshare(g.id!);
     await App.groups.delete(g.id!);
     await App.activities.log(
       groupId: null,
@@ -229,6 +308,11 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                 PopupMenuButton<String>(
                   onSelected: (v) {
                     switch (v) {
+                      case 'invite':
+                        _ledger == null
+                            ? _startSharing(s)
+                            : showSnack(context,
+                                'Sổ chung đang bật. Vào tab Thành viên, bấm "Mời" cạnh từng người.');
                       case 'activity':
                         _open(ActivityScreen(
                             groupId: group.id, groupName: group.name));
@@ -244,34 +328,41 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                         _deleteGroup(group);
                     }
                   },
-                  itemBuilder: (_) => const [
+                  itemBuilder: (_) => [
                     PopupMenuItem(
+                        value: 'invite',
+                        child: ListTile(
+                            leading: const Icon(AppIcons.userPlus),
+                            title: Text(_ledger == null
+                                ? 'Bật sổ chung (mời tài khoản)'
+                                : 'Sổ chung đang bật'))),
+                    const PopupMenuItem(
                         value: 'activity',
                         child: ListTile(
                             leading: Icon(AppIcons.history),
                             title: Text('Lịch sử hoạt động'))),
-                    PopupMenuItem(
+                    const PopupMenuItem(
                         value: 'share',
                         child: ListTile(
                             leading: Icon(AppIcons.share),
                             title: Text('Chia sẻ tóm tắt'))),
-                    PopupMenuItem(
+                    const PopupMenuItem(
                         value: 'csv',
                         child: ListTile(
                             leading: Icon(AppIcons.sheet),
                             title: Text('Xuất file CSV'))),
-                    PopupMenuItem(
+                    const PopupMenuItem(
                         value: 'duplicate',
                         child: ListTile(
                             leading: Icon(AppIcons.copy),
                             title: Text('Nhân bản nhóm'))),
-                    PopupMenuDivider(),
-                    PopupMenuItem(
+                    const PopupMenuDivider(),
+                    const PopupMenuItem(
                         value: 'edit',
                         child: ListTile(
                             leading: Icon(AppIcons.pencil),
                             title: Text('Sửa nhóm'))),
-                    PopupMenuItem(
+                    const PopupMenuItem(
                         value: 'delete',
                         child: ListTile(
                             leading: Icon(AppIcons.trash2),
@@ -321,9 +412,22 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                         members: s.members,
                         transfers: s.transfers)),
                     onUndo: (st) => _undoSettlement(group, s, st),
+                    remindable: _ledger == null
+                        ? const []
+                        : remindableDebts(
+                            transfers: s.transfers,
+                            ownerMemberId: _ledger!.ownerMemberId,
+                            links: _ledger!.links,
+                            ownerUid: _ledger!.ownerUid,
+                          ),
+                    onRemind: (t, uid) => _remind(s, t, uid),
                   ),
                   _MembersTab(
                     summary: s,
+                    ledger: _ledger,
+                    onStartSharing: () => _startSharing(s),
+                    onInvite: (m) => _invite(s, m),
+                    onRemoveAccount: _removeAccount,
                     onOpen: (m) => _open(MemberFormScreen(member: m)),
                     onAdd: () => _open(MemberFormScreen(
                         member: Member(groupId: group.id!, name: ''))),
@@ -565,12 +669,25 @@ class _BalancesTab extends StatelessWidget {
   final void Function(Transfer) onPay;
   final VoidCallback onRecord;
   final void Function(Settlement) onUndo;
+
+  /// Các khoản người khác nợ chủ sổ mà gửi nhắc được (kèm uid người nợ).
+  final List<(Transfer, String)> remindable;
+  final void Function(Transfer, String uid) onRemind;
   const _BalancesTab({
     required this.summary,
     required this.onPay,
     required this.onRecord,
     required this.onUndo,
+    required this.remindable,
+    required this.onRemind,
   });
+
+  String? _remindUid(Transfer t) {
+    for (final (rt, uid) in remindable) {
+      if (rt == t) return uid;
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -606,6 +723,9 @@ class _BalancesTab extends StatelessWidget {
               to: s.memberById(t.toId),
               amount: t.amount,
               onPay: () => onPay(t),
+              onRemind: _remindUid(t) == null
+                  ? null
+                  : () => onRemind(t, _remindUid(t)!),
             ),
           ),
         if (s.transfers.isNotEmpty)
@@ -686,11 +806,15 @@ class _TransferCard extends StatelessWidget {
   final Member to;
   final int amount;
   final VoidCallback onPay;
+
+  /// Có giá trị khi người trả đã có tài khoản và người nhận là chủ sổ.
+  final VoidCallback? onRemind;
   const _TransferCard({
     required this.from,
     required this.to,
     required this.amount,
     required this.onPay,
+    this.onRemind,
   });
 
   @override
@@ -719,6 +843,12 @@ class _TransferCard extends StatelessWidget {
                       fontSize: 17, fontWeight: FontWeight.w800)),
             ]),
           ),
+          if (onRemind != null)
+            IconButton(
+              tooltip: 'Gửi nhắc nợ',
+              onPressed: onRemind,
+              icon: const Icon(AppIcons.bell, color: AppTheme.owe),
+            ),
           FilledButton.icon(
             style: FilledButton.styleFrom(
               minimumSize: const Size(0, 40),
@@ -760,15 +890,64 @@ class _MembersTab extends StatelessWidget {
   final GroupSummary summary;
   final void Function(Member) onOpen;
   final VoidCallback onAdd;
-  const _MembersTab(
-      {required this.summary, required this.onOpen, required this.onAdd});
+
+  /// Sổ chung của nhóm, null nếu chưa bật.
+  final SharedLedger? ledger;
+  final VoidCallback onStartSharing;
+  final void Function(Member) onInvite;
+  final void Function(Member) onRemoveAccount;
+  const _MembersTab({
+    required this.summary,
+    required this.onOpen,
+    required this.onAdd,
+    required this.ledger,
+    required this.onStartSharing,
+    required this.onInvite,
+    required this.onRemoveAccount,
+  });
+
+  /// Dòng trạng thái tài khoản của thành viên trong sổ chung.
+  Widget? _account(BuildContext context, Member m) {
+    final l = ledger;
+    if (l == null) return null;
+    if (m.id == l.ownerMemberId) {
+      return const StatusPill('Bạn · chủ sổ', AppTheme.owed);
+    }
+    final name = l.accountNameOf(m.id);
+    if (name != null) {
+      return GestureDetector(
+        onLongPress: () => onRemoveAccount(m),
+        child: StatusPill('Đã vào: $name', Colors.blue),
+      );
+    }
+    return OutlinedButton.icon(
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(0, 32),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        visualDensity: VisualDensity.compact,
+      ),
+      onPressed: () => onInvite(m),
+      icon: const Icon(AppIcons.userPlus, size: 16),
+      label: const Text('Mời'),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
       children: [
-        const SectionHeader('Thành viên'),
+        if (ledger == null) ...[
+          const SizedBox(height: 12),
+          ShareBanner(onStart: onStartSharing),
+        ],
+        SectionHeader('Thành viên',
+            trailing: ledger == null
+                ? null
+                : Text(
+                    '${ledger!.memberUids.length}/${summary.members.length} có tài khoản',
+                    style: TextStyle(color: muted, fontSize: 12))),
         Card(
           clipBehavior: Clip.antiAlias,
           child: Column(children: [
@@ -780,9 +959,17 @@ class _MembersTab extends StatelessWidget {
                 leading: MemberAvatar(m.name, radius: 22),
                 title: Text(m.name,
                     style: const TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: Text(m.hasBank
-                    ? '${findBankName(m.bankBin)} · ${m.accountNo}'
-                    : 'Chưa có tài khoản nhận tiền'),
+                subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(m.hasBank
+                          ? '${findBankName(m.bankBin)} · ${m.accountNo}'
+                          : 'Chưa có tài khoản nhận tiền'),
+                      if (_account(context, m) case final w?)
+                        Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: w),
+                    ]),
                 trailing: m.hasBank
                     ? const Icon(AppIcons.badgeCheck, color: AppTheme.owed)
                     : const StatusPill('Thêm TK', Colors.orange),
@@ -797,6 +984,15 @@ class _MembersTab extends StatelessWidget {
           icon: const Icon(AppIcons.userPlus),
           label: const Text('Thêm thành viên'),
         ),
+        if (ledger != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Text(
+                'Mỗi mã mời dành cho một người. Nhấn giữ "Đã vào" để gỡ '
+                'tài khoản nhận nhầm. Người nợ bạn đã có tài khoản thì tab '
+                'Số dư hiện nút chuông để gửi nhắc nợ.',
+                style: TextStyle(color: muted, fontSize: 12)),
+          ),
       ],
     );
   }
