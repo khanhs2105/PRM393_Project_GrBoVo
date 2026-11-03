@@ -24,7 +24,7 @@ enum Plan {
   chuNo(
     title: 'Chủ Nợ',
     price: '29.000 ₫/tháng (chia đều cho cả nhóm cũng được)',
-    monthlyPrice: 29000,
+    monthlyPrice: 2000,
     slogan: 'Dành cho người luôn ứng tiền trước.',
     perks: [
       'Chia không đều: theo số tiền, theo phần, theo %',
@@ -40,7 +40,7 @@ enum Plan {
   doiNoThue(
     title: 'Đòi Nợ Thuê',
     price: '99.000 ₫/tháng, hoặc 1 bát phở mỗi tuần',
-    monthlyPrice: 99000,
+    monthlyPrice: 2999,
     slogan: 'Không ai thoát được. Kể cả bạn thân.',
     perks: [
       'Mọi thứ của gói Chủ Nợ',
