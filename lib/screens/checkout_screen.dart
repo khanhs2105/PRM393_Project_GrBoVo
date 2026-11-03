@@ -3,12 +3,17 @@ import 'package:flutter/material.dart';
 import '../logic/money.dart';
 import '../logic/plans.dart';
 import '../services/app_services.dart';
+import '../services/payos.dart';
 import '../services/vnpay_sandbox.dart';
 import '../widgets/app_icons.dart';
 import '../widgets/common.dart';
+import 'payos_webview_screen.dart';
 import 'vnpay_webview_screen.dart';
 
-/// Màn thanh toán gói. Có hai kiểu:
+/// Màn thanh toán gói. Có ba kiểu:
+/// - Qua PayOS: tạo link thanh toán, mở trang có mã VietQR, quét bằng app
+///   ngân hàng. Tiền thật, vào thẳng tài khoản đã gắn với PayOS. Về lại app
+///   thì hỏi PayOS trạng thái đơn, PAID mới kích hoạt gói.
 /// - Qua cổng VNPay môi trường thử nghiệm (sandbox): mở trang VNPay trong
 ///   app, trả bằng thẻ test, VNPay báo thành công thì kích hoạt gói. Sandbox
 ///   không trừ tiền thật.
@@ -24,10 +29,21 @@ class CheckoutScreen extends StatefulWidget {
 }
 
 enum _Method {
-  vnpay('VNPay (sandbox)', 'Cổng VNPay thử nghiệm, trả bằng thẻ test bên dưới',
-      AppIcons.landmark),
-  free('Miễn phí (giả lập)', 'Mã CONNOTHUONG giảm 100%, không gọi cổng nào',
-      AppIcons.sparkles);
+  payos(
+    'PayOS (VietQR)',
+    'Quét mã QR bằng app ngân hàng, trừ tiền thật',
+    AppIcons.qrCode,
+  ),
+  vnpay(
+    'VNPay (sandbox)',
+    'Cổng VNPay thử nghiệm, trả bằng thẻ test bên dưới',
+    AppIcons.landmark,
+  ),
+  free(
+    'Miễn phí (giả lập)',
+    'Mã CONNOTHUONG giảm 100%, không gọi cổng nào',
+    AppIcons.sparkles,
+  );
 
   const _Method(this.title, this.subtitle, this.icon);
   final String title;
@@ -36,21 +52,85 @@ enum _Method {
 }
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
-  _Method _method =
-      VnpayConfig.isConfigured ? _Method.vnpay : _Method.free;
+  _Method _method = PayosConfig.isConfigured
+      ? _Method.payos
+      : VnpayConfig.isConfigured
+      ? _Method.vnpay
+      : _Method.free;
 
   /// Đang bận (kích hoạt gói...). Chữ hiện ở thanh dưới.
   String? _busy;
 
   Plan get plan => widget.plan;
   bool get _isVnpay => _method == _Method.vnpay;
-  int get _total => _isVnpay ? plan.monthlyPrice : 0;
+  bool get _isFree => _method == _Method.free;
+  int get _total => _isFree ? 0 : plan.monthlyPrice;
 
   Future<void> _pay() async {
-    if (_isVnpay) {
-      await _payVnpay();
+    switch (_method) {
+      case _Method.payos:
+        await _payPayos();
+      case _Method.vnpay:
+        await _payVnpay();
+      case _Method.free:
+        await _payFree();
+    }
+  }
+
+  Future<void> _payPayos() async {
+    if (!PayosConfig.isConfigured) {
+      showSnack(context, 'Chưa điền khóa PayOS (lib/services/payos.dart).');
+      return;
+    }
+    setState(() => _busy = 'Đang tạo mã thanh toán PayOS...');
+    final PayosLink link;
+    try {
+      link = await Payos.createLink(
+        amount: plan.monthlyPrice,
+        // Không dấu, tối đa 9 ký tự để chạy được với mọi ngân hàng.
+        description: 'CHIPIN',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = null);
+      showSnack(context, 'Không tạo được link PayOS: $e');
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _busy = null);
+    final ret = await Navigator.push<PayosReturn>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PayosWebViewScreen(url: link.checkoutUrl),
+      ),
+    );
+    if (!mounted) return;
+    if (ret != null && ret.cancelled) {
+      showSnack(context, 'Bạn đã hủy thanh toán');
+      return;
+    }
+    // URL trả về không có chữ ký, nên hỏi lại PayOS cho chắc.
+    setState(() => _busy = 'Đang kiểm tra thanh toán với PayOS...');
+    String status;
+    try {
+      status = await Payos.getStatus(link.orderCode);
+    } catch (e) {
+      status = '';
+    }
+    if (!mounted) return;
+    if (status == 'PAID') {
+      await _activate(
+        'Đã thanh toán ${formatVnd(plan.monthlyPrice)} qua PayOS.\n'
+        'Mã đơn: ${link.orderCode}',
+      );
     } else {
-      await _payFree();
+      setState(() => _busy = null);
+      showSnack(
+        context,
+        status.isEmpty
+            ? 'Không kiểm tra được trạng thái đơn ${link.orderCode}'
+            : 'Đơn ${link.orderCode} chưa thanh toán ($status)',
+      );
     }
   }
 
@@ -70,8 +150,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Future<void> _payVnpay() async {
     if (!VnpayConfig.isConfigured) {
-      showSnack(context,
-          'Chưa điền khóa VNPay sandbox (lib/services/vnpay_sandbox.dart).');
+      showSnack(
+        context,
+        'Chưa điền khóa VNPay sandbox (lib/services/vnpay_sandbox.dart).',
+      );
       return;
     }
     final txnRef = 'ALO${DateTime.now().millisecondsSinceEpoch}';
@@ -87,10 +169,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
     if (!mounted || result == null) return;
     if (result.success) {
-      await _activate('Đã thanh toán ${formatVnd(plan.monthlyPrice)} qua '
-          'VNPay sandbox (tiền thử nghiệm, không phải tiền thật).\n'
-          'Ngân hàng: ${result.bankCode}\n'
-          'Mã giao dịch: ${result.transactionNo}');
+      await _activate(
+        'Đã thanh toán ${formatVnd(plan.monthlyPrice)} qua '
+        'VNPay sandbox (tiền thử nghiệm, không phải tiền thật).\n'
+        'Ngân hàng: ${result.bankCode}\n'
+        'Mã giao dịch: ${result.transactionNo}',
+      );
     } else {
       showSnack(context, 'Thanh toán chưa thành công: ${result.message}');
     }
@@ -116,7 +200,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         content: Text('Bạn đã trở thành ${plan.title}.\n\n$detail'),
         actions: [
           FilledButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Ngon')),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Ngon'),
+          ),
         ],
       ),
     );
@@ -145,9 +231,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     Text('Đơn hàng', style: text.titleMedium),
                     const SizedBox(height: 12),
                     _line('Gói ${plan.title} (1 tháng)', formatVnd(price)),
-                    if (!_isVnpay)
-                      _line('Mã CONNOTHUONG (giảm 100%)', formatVnd(-price),
-                          color: scheme.primary),
+                    if (_isFree)
+                      _line(
+                        'Mã CONNOTHUONG (giảm 100%)',
+                        formatVnd(-price),
+                        color: scheme.primary,
+                      ),
                     const Divider(height: 24),
                     _line('Tổng thanh toán', formatVnd(_total), bold: true),
                   ],
@@ -163,7 +252,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                   side: BorderSide(
-                    color: m == _method ? scheme.primary : scheme.outlineVariant,
+                    color: m == _method
+                        ? scheme.primary
+                        : scheme.outlineVariant,
                     width: m == _method ? 2 : 1,
                   ),
                 ),
@@ -180,32 +271,39 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
             if (_isVnpay) _testCardInfo(context),
             const SizedBox(height: 8),
-            Text(
-              _isVnpay
-                  ? 'Đây là cổng VNPay môi trường thử nghiệm: thanh toán bằng '
-                      'thẻ test, không trừ tiền thật.'
-                  : 'Thanh toán giả lập cho vui: không kết nối ngân hàng hay '
-                      'ví nào và không trừ tiền thật.',
-              style: const TextStyle(fontStyle: FontStyle.italic),
-            ),
+            Text(switch (_method) {
+              _Method.payos =>
+                'PayOS trừ tiền thật: tiền chuyển vào tài '
+                    'khoản ngân hàng đã gắn với PayOS.',
+              _Method.vnpay =>
+                'Đây là cổng VNPay môi trường thử nghiệm: '
+                    'thanh toán bằng thẻ test, không trừ tiền thật.',
+              _Method.free =>
+                'Thanh toán giả lập cho vui: không kết nối '
+                    'ngân hàng hay ví nào và không trừ tiền thật.',
+            }, style: const TextStyle(fontStyle: FontStyle.italic)),
           ],
         ),
         bottomNavigationBar: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
             child: _busy != null
-                ? Row(children: [
-                    const SizedBox(
+                ? Row(
+                    children: [
+                      const SizedBox(
                         width: 22,
                         height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2.5)),
-                    const SizedBox(width: 12),
-                    Expanded(child: Text(_busy!)),
-                  ])
+                        child: CircularProgressIndicator(strokeWidth: 2.5),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(child: Text(_busy!)),
+                    ],
+                  )
                 : FilledButton.icon(
                     onPressed: _pay,
                     style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48)),
+                      minimumSize: const Size.fromHeight(48),
+                    ),
                     icon: const Icon(AppIcons.lock),
                     label: Text('Thanh toán ${formatVnd(_total)}'),
                   ),
@@ -216,12 +314,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Widget _testCardInfo(BuildContext context) {
-    Widget row(String k, String v) => Row(children: [
-          SizedBox(width: 110, child: Text(k)),
-          Expanded(
-              child: SelectableText(v,
-                  style: const TextStyle(fontWeight: FontWeight.w600))),
-        ]);
+    Widget row(String k, String v) => Row(
+      children: [
+        SizedBox(width: 110, child: Text(k)),
+        Expanded(
+          child: SelectableText(
+            v,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
+    );
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 8),
@@ -233,8 +336,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Trên trang VNPay chọn "Thẻ nội địa", ngân hàng NCB, '
-              'rồi nhập thẻ test:'),
+          const Text(
+            'Trên trang VNPay chọn "Thẻ nội địa", ngân hàng NCB, '
+            'rồi nhập thẻ test:',
+          ),
           const SizedBox(height: 6),
           row('Số thẻ', '9704198526191432198'),
           row('Tên chủ thẻ', 'NGUYEN VAN A'),
@@ -247,13 +352,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Widget _line(String label, String value, {Color? color, bool bold = false}) {
     final style = TextStyle(
-        color: color, fontWeight: bold ? FontWeight.bold : FontWeight.normal);
+      color: color,
+      fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(children: [
-        Expanded(child: Text(label, style: style)),
-        Text(value, style: style),
-      ]),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: style)),
+          Text(value, style: style),
+        ],
+      ),
     );
   }
 }
