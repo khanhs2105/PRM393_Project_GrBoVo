@@ -9,7 +9,6 @@ import '../widgets/app_icons.dart';
 import '../widgets/common.dart';
 import '../widgets/pro_prompts.dart';
 import '../widgets/ui.dart';
-import 'account_screen.dart';
 import 'group_detail_screen.dart';
 import 'group_form_screen.dart';
 import 'shared/shared_ledger_screen.dart';
@@ -64,12 +63,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return name.isEmpty ? g : g.replaceFirst(' 👋', ', $name 👋');
   }
 
-  Future<void> _openAccount() async {
-    final changed = await Navigator.push<bool>(
-        context, MaterialPageRoute(builder: (_) => const AccountScreen()));
-    if (changed == true && mounted) _reload();
-  }
-
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -111,19 +104,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     ]),
               ),
             ]),
-            actions: [
-              IconButton(
-                tooltip: 'Nhập mã mời vào sổ chung',
-                icon: const Icon(AppIcons.keyRound),
-                onPressed: () => showJoinLedgerDialog(context),
-              ),
-              IconButton(
-                tooltip: 'Tài khoản',
-                icon: const Icon(AppIcons.circleUser),
-                onPressed: _openAccount,
-              ),
-              const SizedBox(width: 4),
-            ],
           ),
           body: snap.hasError
               ? Center(child: Text('Lỗi: ${snap.error}'))
@@ -191,10 +171,12 @@ class _HomeScreenState extends State<HomeScreen> {
                             ],
                           ),
                         ),
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => _createGroup(),
-            icon: const Icon(AppIcons.plus),
-            label: const Text('Tạo nhóm'),
+          // Bong bóng 🔑: nhập mã mời vào sổ chung. Tạo nhóm đã chuyển
+          // sang nút "+" ở giữa thanh dưới.
+          floatingActionButton: FloatingActionButton(
+            tooltip: 'Nhập mã mời vào sổ chung',
+            onPressed: () => showJoinLedgerDialog(context),
+            child: const Icon(AppIcons.keyRound),
           ),
         );
       },
