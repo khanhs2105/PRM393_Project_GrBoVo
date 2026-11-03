@@ -23,6 +23,12 @@ void main() {
     expect(Plan.chuNo.canShakeToPick, isFalse);
   });
 
+  test('gói trả phí có giá niêm yết, Con Nợ miễn phí', () {
+    expect(Plan.conNo.monthlyPrice, 0);
+    expect(Plan.chuNo.monthlyPrice, 29000);
+    expect(Plan.doiNoThue.monthlyPrice, 99000);
+  });
+
   test('tin nhắn nhắc nợ có tên, số tiền và xoay vòng câu', () {
     for (final plan in Plan.values) {
       final a = reminderMessage(
