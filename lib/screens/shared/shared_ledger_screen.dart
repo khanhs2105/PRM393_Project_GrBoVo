@@ -10,6 +10,7 @@ import '../../theme.dart';
 import '../../widgets/app_icons.dart';
 import '../../widgets/common.dart';
 import '../../widgets/ui.dart';
+import '../../services/friendly_error.dart';
 
 /// Nhập mã mời để vào sổ chung của người khác. Vào được thì mở sổ luôn.
 Future<void> showJoinLedgerDialog(BuildContext context) async {
@@ -19,11 +20,13 @@ Future<void> showJoinLedgerDialog(BuildContext context) async {
     return;
   }
   final controller = TextEditingController();
+  var busy = false;
   final ledgerId = await showDialog<String>(
     context: context,
+    // Không cho bấm ra ngoài để đóng khi đang vào sổ (xem PopScope dưới).
+    barrierDismissible: false,
     builder: (ctx) {
       String? error;
-      var busy = false;
       return StatefulBuilder(builder: (ctx, setState) {
         Future<void> submit() async {
           setState(() {
@@ -34,15 +37,20 @@ Future<void> showJoinLedgerDialog(BuildContext context) async {
             final id = await service.join(controller.text);
             if (ctx.mounted) Navigator.pop(ctx, id);
           } on FormatException catch (e) {
-            setState(() => error = e.message);
+            if (ctx.mounted) setState(() => error = e.message);
           } catch (e) {
-            setState(() => error = 'Không vào được sổ: $e');
+            if (ctx.mounted) {
+              setState(() => error = 'Không vào được sổ: ${friendlyError(e)}');
+            }
           } finally {
             if (ctx.mounted) setState(() => busy = false);
           }
         }
 
-        return AlertDialog(
+        // Đang vào sổ thì không cho đóng hộp thoại (nút Back).
+        return PopScope(
+          canPop: !busy,
+          child: AlertDialog(
           title: const Text('Nhập mã mời'),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             const Text('Chủ sổ gửi cho bạn một mã 6 ký tự. Nhập vào để xem '
@@ -77,6 +85,7 @@ Future<void> showJoinLedgerDialog(BuildContext context) async {
                   : const Text('Vào sổ'),
             ),
           ],
+        ),
         );
       });
     },

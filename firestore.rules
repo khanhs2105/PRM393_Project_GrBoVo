@@ -12,10 +12,15 @@ service cloud.firestore {
     // Hồ sơ người dùng: chỉ chính chủ đọc/ghi.
     match /users/{uid} {
       allow read: if request.auth != null && request.auth.uid == uid;
+      // plan chỉ nhận đúng tên các gói (mua là giả lập nên người dùng tự
+      // ghi được; nếu có thanh toán thật thì plan phải do server ghi).
       allow create, update: if request.auth != null
         && request.auth.uid == uid
         && (!('email' in request.resource.data)
-            || request.resource.data.email == request.auth.token.email);
+            || request.resource.data.email == request.auth.token.email)
+        && (!('plan' in request.resource.data)
+            || request.resource.data.plan == null
+            || request.resource.data.plan in ['conNo', 'chuNo', 'doiNoThue']);
       allow delete: if false;
 
       // Bản sao lưu dữ liệu nhóm.
@@ -43,7 +48,19 @@ service cloud.firestore {
       // Chủ sổ sửa dữ liệu sổ nhưng không được đổi chủ, và chỉ được BỚT
       // tài khoản (gỡ người). Thêm tài khoản chỉ đi qua mã mời (isJoining),
       // để chủ sổ không tự kéo người lạ vào sổ rồi gửi nhắc nợ giả.
-      allow update: if signedIn() && (isOwnerEdit() || isJoining(ledgerId));
+      allow update: if signedIn()
+        && (isOwnerEdit() || isJoining(ledgerId) || isRenaming());
+
+      // Thành viên đổi tên hiển thị của chính mình trong sổ.
+      function isRenaming() {
+        let me = request.auth.uid;
+        let d = request.resource.data;
+        return me in resource.data.links
+          && d.diff(resource.data).affectedKeys().hasOnly(['linkNames'])
+          && d.linkNames.diff(resource.data.linkNames).affectedKeys().hasOnly([me])
+          && d.linkNames[me] is string
+          && d.linkNames[me].size() <= 100;
+      }
 
       function noNewKeys(newMap, oldMap) {
         return newMap.keys().toSet().difference(oldMap.keys().toSet()).size() == 0;

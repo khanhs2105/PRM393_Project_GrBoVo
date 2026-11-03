@@ -62,6 +62,10 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } on FirebaseAuthException catch (e) {
       if (mounted) setState(() => _error = authErrorMessage(e.code));
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = 'Chưa gửi được email, kiểm tra mạng rồi thử lại.');
+      }
     }
   }
 

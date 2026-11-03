@@ -62,7 +62,13 @@ class AuthService {
     final cred = await _auth.createUserWithEmailAndPassword(
         email: email.trim(), password: password);
     final user = cred.user!;
-    await user.updateDisplayName(name.trim());
+    // Tài khoản đã tạo xong: lỗi mạng khi đặt tên không được làm hỏng cả
+    // lần đăng ký (bấm lại sẽ báo "Email đã được đăng ký").
+    try {
+      await user.updateDisplayName(name.trim());
+    } catch (e) {
+      debugPrint('Chưa đặt được tên hiển thị: $e');
+    }
     await _safe(_userDoc(user.uid).set({
       'uid': user.uid,
       'displayName': name.trim(),
@@ -136,7 +142,8 @@ class AuthService {
   /// Lưu ảnh đại diện (JPEG đã thu nhỏ). null là xóa ảnh.
   Future<void> updateAvatar(Uint8List? jpeg) async {
     final uid = _requireUid();
-    if (jpeg != null && jpeg.length > 300 * 1024) {
+    // Rules cho phép chuỗi base64 < 400.000 ký tự, tức ảnh < ~299.000 byte.
+    if (jpeg != null && jpeg.length > 290 * 1024) {
       throw StateError('Ảnh quá lớn, chọn ảnh khác nhé.');
     }
     final value = jpeg == null ? FieldValue.delete() : base64Encode(jpeg);

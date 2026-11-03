@@ -65,16 +65,31 @@ class _MemberFormScreenState extends State<MemberFormScreen> {
       showSnack(context, 'Chọn ngân hàng');
       return;
     }
+    // Chọn ngân hàng mà để trống số tài khoản: không lưu ngân hàng, nhưng
+    // báo cho người dùng biết thay vì bỏ âm thầm.
+    final droppedBank = !hasAccount && _bin != null;
+    // Không cho trùng tên với người khác trong nhóm ("Huy trả Huy").
+    final others = await App.groups.members(widget.member.groupId);
+    final name = _name.text.trim().toLowerCase();
+    if (others.any(
+        (o) => o.id != widget.member.id && o.name.trim().toLowerCase() == name)) {
+      if (mounted) showSnack(context, 'Nhóm đã có người tên này, đặt tên khác nhé');
+      return;
+    }
+    if (!mounted) return;
     final m = Member(
       id: widget.member.id,
       groupId: widget.member.groupId,
       name: _name.text.trim(),
       bankBin: hasAccount ? _bin : null,
-      accountNo: hasAccount ? _accountNo.text.trim() : null,
+      accountNo: hasAccount ? _accountNo.text.replaceAll(' ', '') : null,
       accountName: _accountName.text.trim().isEmpty
           ? null
           : removeDiacritics(_accountName.text.trim()).toUpperCase(),
     );
+    if (droppedBank) {
+      showSnack(context, 'Chưa có số tài khoản nên không lưu ngân hàng');
+    }
     if (_isNew) {
       await App.groups.addMember(m);
     } else {
@@ -105,6 +120,14 @@ class _MemberFormScreenState extends State<MemberFormScreen> {
     final deleted = await App.groups.deleteMember(widget.member.id!);
     if (!mounted) return;
     if (deleted) {
+      // Nhóm đang là sổ chung: gỡ luôn tài khoản đứng tên người này, để họ
+      // không còn xem được sổ.
+      try {
+        await App.shared?.removeAccountsOfMember(
+            widget.member.groupId, widget.member.id!);
+      } catch (e) {
+        debugPrint('Không gỡ được tài khoản của thành viên đã xóa: $e');
+      }
       await _log(ActivityKind.memberDeleted,
           'Xóa thành viên ${widget.member.name}');
       if (mounted) Navigator.pop(context, true);
@@ -176,6 +199,15 @@ class _MemberFormScreenState extends State<MemberFormScreen> {
               controller: _accountNo,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(labelText: 'Số tài khoản'),
+              // Số tài khoản ngân hàng VN: 6–19 chữ số. Sai thì QR VietQR
+              // sinh ra cũng sai.
+              validator: (v) {
+                final t = (v ?? '').replaceAll(' ', '');
+                if (t.isEmpty) return null;
+                return RegExp(r'^\d{6,19}$').hasMatch(t)
+                    ? null
+                    : 'Số tài khoản chỉ gồm 6–19 chữ số';
+              },
             ),
             const SizedBox(height: 12),
             TextFormField(

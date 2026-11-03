@@ -12,8 +12,13 @@ String _date(DateTime d) =>
     '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
 /// Bọc ô CSV trong ngoặc kép khi cần (có dấu phẩy, ngoặc kép, xuống dòng).
+/// Ô chữ bắt đầu bằng = + - @ (hoặc tab, xuống dòng) được thêm dấu ' ở đầu
+/// để Excel không chạy như công thức (vd. tên khoản chi `=HYPERLINK(...)`).
 String csvCell(Object? value) {
-  final s = value?.toString() ?? '';
+  var s = value?.toString() ?? '';
+  if (value is String && s.isNotEmpty && '=+-@\t\r'.contains(s[0])) {
+    s = "'$s";
+  }
   if (s.contains(RegExp(r'[",\n\r]'))) return '"${s.replaceAll('"', '""')}"';
   return s;
 }

@@ -36,6 +36,7 @@ import 'record_payment_screen.dart';
 import 'shared/owner_sharing.dart';
 import 'stats_screen.dart';
 import '../widgets/app_icons.dart';
+import '../services/friendly_error.dart';
 
 class GroupDetailScreen extends StatefulWidget {
   final int groupId;
@@ -55,6 +56,9 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
   /// Khác với `_ledger != null`: mất mạng thì `_ledger` vẫn null nhưng sổ
   /// đã bật, không được tạo thêm sổ thứ hai.
   bool _sharedOn = false;
+
+  /// Đã báo "chưa đồng bộ được" một lần (không báo lặp lại mỗi lần tải).
+  bool _warnedSync = false;
 
   Future<(Group, GroupSummary)> _load() async {
     final result = (
@@ -82,7 +86,13 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
         return;
       }
       if (mounted && !_sharedOn) setState(() => _sharedOn = true);
-      await service.publish(widget.groupId);
+      final published = await service.publish(widget.groupId);
+      if (!published && !_warnedSync && mounted) {
+        _warnedSync = true;
+        showSnack(context,
+            'Chưa đồng bộ được sổ chung, thành viên đang thấy dữ liệu cũ. '
+            'Có mạng app sẽ tự đẩy lại.');
+      }
       final ledger = await service.fetch(id);
       if (mounted) setState(() => _ledger = ledger);
     } catch (e) {
@@ -137,7 +147,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
       }
       await _syncShared();
     } catch (e) {
-      if (mounted) showSnack(context, 'Không gỡ được: $e');
+      if (mounted) showSnack(context, 'Không gỡ được: ${friendlyError(e)}');
     }
   }
 
@@ -151,7 +161,12 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
         amount: t.amount);
   }
 
-  void _reload() => setState(() => _future = _load());
+  /// Tải lại dữ liệu. Gọi sau `await` nên kiểm `mounted` ngay ở đây (màn
+  /// có thể đã bị gỡ trong lúc chờ, vd. vừa đổi tài khoản).
+  void _reload() {
+    if (!mounted) return;
+    setState(() => _future = _load());
+  }
 
   Future<void> _open(Widget screen) async {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
@@ -201,6 +216,9 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
         ],
       ),
     );
+    // Hộp thoại còn chạy hiệu ứng đóng (TextField vẫn dùng controller), nên
+    // giải phóng sau khi hiệu ứng xong.
+    Future.delayed(const Duration(milliseconds: 400), controller.dispose);
     if (name == null) return;
     final id = await App.groups.duplicate(g.id!, name);
     await App.activities.log(
@@ -336,6 +354,13 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                             ? _startSharing(s)
                             : showSnack(context,
                                 'Sổ chung đang bật. Vào tab Thành viên, bấm "Mời" cạnh từng người.');
+                      case 'owner':
+                        if (_ledger != null) {
+                          changeOwnerMember(context, _ledger!, s.members)
+                              .then((changed) {
+                            if (changed) _syncShared();
+                          });
+                        }
                       case 'activity':
                         _open(ActivityScreen(
                             groupId: group.id, groupName: group.name));
@@ -359,6 +384,12 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                             title: Text(_ledger == null
                                 ? 'Bật sổ chung (mời tài khoản)'
                                 : 'Sổ chung đang bật'))),
+                    if (_ledger != null)
+                      const PopupMenuItem(
+                          value: 'owner',
+                          child: ListTile(
+                              leading: Icon(AppIcons.circleUser),
+                              title: Text('Đổi "Bạn là ai trong nhóm"'))),
                     const PopupMenuItem(
                         value: 'activity',
                         child: ListTile(

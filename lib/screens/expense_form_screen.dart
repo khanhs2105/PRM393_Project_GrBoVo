@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import '../logic/categories.dart';
 import '../logic/money.dart';
 import '../logic/plans.dart';
+import '../data/group_repository.dart';
 import '../models/activity.dart';
 import '../models/expense.dart';
 import '../models/group.dart';
@@ -102,6 +103,11 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
             : 1;
       }
       _receiptPath = e?.receiptPath;
+      // Sửa khoản đã chia theo %: giữ nguyên % cũ của từng người, sửa một
+      // người thì không tự chia lại làm mất % đã tùy chỉnh của người khác.
+      if (e?.splitType == SplitType.percent) {
+        _percentLocked.addAll(e!.weights.keys);
+      }
     });
   }
 
@@ -167,6 +173,15 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     if (_selected.isEmpty) return 'Chọn ít nhất 1 người tham gia';
     switch (_splitType) {
       case SplitType.exact:
+        final bad = [
+          for (final id in _selected)
+            if (_exact[id]!.text.trim().isNotEmpty &&
+                parseVnd(_exact[id]!.text) == null)
+              id,
+        ];
+        if (bad.isNotEmpty) {
+          return 'Số tiền của ${bad.map(_memberName).join(', ')} không hợp lệ';
+        }
         if (_exactTotal != _amountValue) {
           return 'Tổng các phần (${formatVnd(_exactTotal)}) phải bằng ${formatVnd(_amountValue)}';
         }
@@ -255,6 +270,15 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   String _memberName(int id) =>
       _members.firstWhere((m) => m.id == id).name;
 
+  /// Người nhận phần lẻ khi chia đều: người trả nếu có tham gia, không thì
+  /// người đầu tiên được chọn (giống splitEqual).
+  String _remainderName() {
+    if (_paidBy != null && _selected.contains(_paidBy)) {
+      return _memberName(_paidBy!);
+    }
+    return _selected.isEmpty ? 'người trả' : _memberName(_selected.first);
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     final error = _splitError();
@@ -262,7 +286,13 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
       showSnack(context, error);
       return;
     }
-    final shares = _preview()!;
+    // Bỏ người có phần 0 ₫ (vd. được chọn nhưng để trống ô số tiền), để họ
+    // không hiện trong khoản chi và nhật ký không đếm họ.
+    final shares = Map.of(_preview()!)..removeWhere((_, v) => v == 0);
+    if (shares.isEmpty) {
+      showSnack(context, 'Chưa có ai phải trả phần nào');
+      return;
+    }
     final weights = switch (_splitType) {
       SplitType.shares => {
           for (final id in shares.keys) id: _partWeights[id]!,
@@ -288,6 +318,11 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
       date: _date,
     );
     await App.expenses.save(expense);
+    // Đổi hoặc bỏ ảnh hóa đơn khi sửa: xóa file ảnh cũ khỏi máy.
+    final oldReceipt = widget.expense?.receiptPath;
+    if (oldReceipt != null && oldReceipt != _receiptPath) {
+      await deleteFileQuietly(oldReceipt);
+    }
     await App.activities.log(
       groupId: widget.groupId,
       groupName: _group?.name ?? '',
@@ -424,7 +459,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
               padding: const EdgeInsets.only(top: 12),
               child: Text(
                 'Mỗi người ${formatVnd(_amountValue ~/ _selected.length)}'
-                '${_amountValue % _selected.length == 0 ? '' : ' (phần lẻ ${_amountValue % _selected.length} ₫ tính cho người trả)'}',
+                '${_amountValue % _selected.length == 0 ? '' : ' (phần lẻ ${_amountValue % _selected.length} ₫ tính cho ${_remainderName()})'}',
                 style: TextStyle(color: scheme.onSurfaceVariant),
               ),
             ),
@@ -690,8 +725,11 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                     if (!ok || !mounted) return;
                   }
                   setState(() => _splitType = type);
-                  if (_splitType == SplitType.percent && _percentTotal == 0) {
-                    _fillEqualPercent();
+                  if (_splitType == SplitType.percent) {
+                    // Người tham gia có thể đã đổi ở tab khác: chia lại.
+                    _percentTotal == 0
+                        ? _fillEqualPercent()
+                        : setState(_rebalancePercent);
                   }
                 },
               ),

@@ -46,8 +46,11 @@ Map<String, String>? parseTlv(String data) {
   while (i < data.length) {
     if (i + 4 > data.length) return null;
     final tag = data.substring(i, i + 2);
-    final len = int.tryParse(data.substring(i + 2, i + 4));
-    if (len == null || i + 4 + len > data.length) return null;
+    final lenText = data.substring(i + 2, i + 4);
+    // Độ dài luôn là 2 chữ số (chặn "-1" làm substring ném RangeError).
+    if (!RegExp(r'^\d\d$').hasMatch(lenText)) return null;
+    final len = int.parse(lenText);
+    if (i + 4 + len > data.length) return null;
     result[tag] = data.substring(i + 4, i + 4 + len);
     i += 4 + len;
   }

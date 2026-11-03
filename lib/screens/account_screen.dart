@@ -9,6 +9,7 @@ import '../widgets/ui.dart';
 import '../widgets/app_icons.dart';
 import 'change_password_screen.dart';
 import 'edit_profile_screen.dart';
+import '../services/friendly_error.dart';
 
 /// Tài khoản: ảnh đại diện, tên, email, gói, sửa hồ sơ, đổi mật khẩu, đăng xuất.
 class AccountScreen extends StatefulWidget {
@@ -28,7 +29,7 @@ class _AccountScreenState extends State<AccountScreen> {
     try {
       await job();
     } catch (e) {
-      if (mounted) showSnack(context, 'Lỗi: $e');
+      if (mounted) showSnack(context, friendlyError(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -110,7 +111,7 @@ class _AccountScreenState extends State<AccountScreen> {
     );
     if (!ok || !mounted) return;
     Navigator.of(context).popUntil((r) => r.isFirst);
-    await _auth.signOut();
+    await App.signOut();
   }
 
   @override

@@ -6,6 +6,7 @@ import '../services/app_services.dart';
 import '../widgets/app_icons.dart';
 import '../widgets/common.dart';
 import 'auth/auth_widgets.dart';
+import '../services/friendly_error.dart';
 
 /// Sửa tên hiển thị và số điện thoại. Email không sửa ở đây.
 class EditProfileScreen extends StatefulWidget {
@@ -44,11 +45,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         name: _name.text,
         phone: _phone.text.replaceAll(RegExp(r'[\s.-]'), ''),
       );
+      // Đổi tên ở các sổ chung đã tham gia để chủ sổ thấy tên mới.
+      await App.shared?.renameMe(_name.text.trim());
       if (!mounted) return;
       showSnack(context, 'Đã lưu hồ sơ');
       Navigator.pop(context, true);
     } catch (e) {
-      if (mounted) setState(() => _error = 'Không lưu được: $e');
+      if (mounted) setState(() => _error = 'Không lưu được: ${friendlyError(e)}');
     } finally {
       if (mounted) setState(() => _busy = false);
     }

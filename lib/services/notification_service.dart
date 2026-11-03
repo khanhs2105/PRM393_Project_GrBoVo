@@ -70,6 +70,12 @@ class NotificationService {
         notificationDetails: _details,
       );
 
+  /// Hủy mọi thông báo đã hẹn (khi đăng xuất).
+  static Future<void> cancelAll() => _plugin.cancelAll();
+
+  /// Hủy một thông báo đã hẹn.
+  static Future<void> cancel(int id) => _plugin.cancel(id: id);
+
   /// Hiện ngay một thông báo (dùng để thử).
   static Future<void> showNow(String title, String body) => _plugin.show(
         id: 0,

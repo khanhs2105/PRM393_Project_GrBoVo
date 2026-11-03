@@ -34,7 +34,12 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
   }
 
-  void _reload() => setState(() => _future = _load());
+  /// Tải lại dữ liệu. Gọi sau `await` nên kiểm `mounted` ngay ở đây (màn
+  /// có thể đã bị gỡ trong lúc chờ, vd. vừa đổi tài khoản).
+  void _reload() {
+    if (!mounted) return;
+    setState(() => _future = _load());
+  }
 
   /// Bản Free không giới hạn số nhóm (theo chiến lược: không chặn thao tác
   /// cốt lõi để ép nâng cấp).
@@ -148,7 +153,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           ],
                         )
                       : RefreshIndicator(
-                          onRefresh: () async => _reload(),
+                          onRefresh: () async {
+                            _reload();
+                            await _future;
+                          },
                           child: ListView(
                             padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
                             children: [

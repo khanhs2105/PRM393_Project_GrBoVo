@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:sqflite_common/sqlite_api.dart';
 
 import '../models/group.dart';
@@ -54,8 +56,21 @@ class GroupRepository {
       );
 
   /// Xóa nhóm, kéo theo thành viên, khoản chi, lần trả tiền của nhóm.
-  Future<void> delete(int groupId) =>
-      db.delete('groups', where: 'id = ?', whereArgs: [groupId]);
+  /// Xóa luôn lịch sử hoạt động của nhóm và file ảnh hóa đơn (không còn
+  /// khoản chi nào trỏ tới nữa).
+  Future<void> delete(int groupId) async {
+    final receipts = await db.query('expenses',
+        columns: ['receipt_path'],
+        where: 'group_id = ? AND receipt_path IS NOT NULL',
+        whereArgs: [groupId]);
+    await db.transaction((txn) async {
+      await txn.delete('activities', where: 'group_id = ?', whereArgs: [groupId]);
+      await txn.delete('groups', where: 'id = ?', whereArgs: [groupId]);
+    });
+    for (final r in receipts) {
+      await deleteFileQuietly(r['receipt_path'] as String?);
+    }
+  }
 
   Future<List<Member>> members(int groupId) async {
     final rows = await db.query(
@@ -88,4 +103,13 @@ class GroupRepository {
     await db.delete('members', where: 'id = ?', whereArgs: [memberId]);
     return true;
   }
+}
+
+/// Xóa file nếu còn, lỗi thì bỏ qua (dọn dẹp, không ảnh hưởng dữ liệu).
+Future<void> deleteFileQuietly(String? path) async {
+  if (path == null || path.isEmpty) return;
+  try {
+    final f = File(path);
+    if (await f.exists()) await f.delete();
+  } catch (_) {}
 }
