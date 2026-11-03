@@ -10,6 +10,7 @@ enum Plan {
   conNo(
     title: 'Con Nợ',
     price: 'Miễn phí (vì bạn còn đang nợ)',
+    monthlyPrice: 0,
     slogan: 'Bản miễn phí dùng được thật, không giới hạn thao tác.',
     perks: [
       'Không giới hạn nhóm và khoản chi',
@@ -23,6 +24,7 @@ enum Plan {
   chuNo(
     title: 'Chủ Nợ',
     price: '29.000 ₫/tháng (chia đều cho cả nhóm cũng được)',
+    monthlyPrice: 29000,
     slogan: 'Dành cho người luôn ứng tiền trước.',
     perks: [
       'Chia không đều: theo số tiền, theo phần, theo %',
@@ -38,6 +40,7 @@ enum Plan {
   doiNoThue(
     title: 'Đòi Nợ Thuê',
     price: '99.000 ₫/tháng, hoặc 1 bát phở mỗi tuần',
+    monthlyPrice: 99000,
     slogan: 'Không ai thoát được. Kể cả bạn thân.',
     perks: [
       'Mọi thứ của gói Chủ Nợ',
@@ -50,12 +53,17 @@ enum Plan {
   const Plan({
     required this.title,
     required this.price,
+    required this.monthlyPrice,
     required this.slogan,
     required this.perks,
   });
 
   final String title;
   final String price;
+
+  /// Giá niêm yết mỗi tháng (đồng), chỉ để hiện trên màn thanh toán giả.
+  /// Khi thanh toán luôn được giảm 100% nên không ai bị trừ tiền.
+  final int monthlyPrice;
   final String slogan;
   final List<String> perks;
 

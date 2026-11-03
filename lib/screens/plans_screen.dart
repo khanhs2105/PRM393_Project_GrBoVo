@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 
 import '../logic/growth.dart';
@@ -7,9 +5,10 @@ import '../logic/plans.dart';
 import '../services/app_services.dart';
 import '../widgets/app_icons.dart';
 import '../widgets/common.dart';
+import 'checkout_screen.dart';
 
-/// Màn chọn gói. Không có thanh toán thật, nút mua sẽ chạy trốn vài lần
-/// rồi mới chịu cho bấm.
+/// Màn chọn gói. Không có thanh toán thật: nút mua mở màn thanh toán giả
+/// ([CheckoutScreen]) luôn giảm 100%.
 class PlansScreen extends StatelessWidget {
   const PlansScreen({super.key});
 
@@ -102,7 +101,7 @@ class _PlanCard extends StatelessWidget {
                     onPressed: () => _downgrade(context),
                     child: const Text('Quay về làm Con Nợ'),
                   )
-                : _RunawayBuyButton(plan: plan),
+                : _BuyButton(plan: plan),
           ],
         ]),
       ),
@@ -118,66 +117,28 @@ class _PlanCard extends StatelessWidget {
   }
 }
 
-/// Nút "Mua" né tay người bấm 3 lần đầu, sau đó mới cho mua (miễn phí).
-class _RunawayBuyButton extends StatefulWidget {
+/// Nút "Mua": mở màn thanh toán giả. Trước đây nút né tay người bấm 3 lần
+/// nên nhiều người tưởng không mua được; giờ bấm là vào thanh toán luôn.
+class _BuyButton extends StatelessWidget {
   final Plan plan;
-  const _RunawayBuyButton({required this.plan});
+  const _BuyButton({required this.plan});
 
-  @override
-  State<_RunawayBuyButton> createState() => _RunawayBuyButtonState();
-}
-
-class _RunawayBuyButtonState extends State<_RunawayBuyButton> {
-  static const _taunts = [
-    'Ơ kìa, chắc chưa? 🤨',
-    'Nghĩ lại đi, tiền đó trả nợ được đấy 😏',
-    'Thôi được rồi, bấm lần nữa đi 🙄',
-  ];
-  final _random = Random();
-  int _dodges = 0;
-  Alignment _align = Alignment.centerLeft;
-
-  Future<void> _onPressed() async {
-    if (_dodges < _taunts.length) {
-      setState(() {
-        _align = Alignment(_random.nextDouble() * 2 - 1, 0);
-        _dodges++;
-      });
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(
-            content: Text(_taunts[_dodges - 1]),
-            duration: const Duration(milliseconds: 1200)));
-      return;
-    }
-    // Hiện hộp thoại trước rồi mới đổi gói: đổi gói xong thẻ này thành
-    // "Đang dùng", nút mua bị gỡ khỏi màn hình nên không hiện dialog được.
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Thanh toán thành công! 🎉'),
-        content: Text('Bạn đã trở thành ${widget.plan.title}.\n\n'
-            'Đã trừ 0 ₫ từ tài khoản. Đùa thôi, miễn phí mà 😜'),
-        actions: [
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Ngon')),
-        ],
-      ),
+  Future<void> _open(BuildContext context) async {
+    final bought = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => CheckoutScreen(plan: plan)),
     );
-    await App.setPlan(widget.plan);
+    if (bought == true && context.mounted) {
+      showSnack(context, 'Đã kích hoạt gói ${plan.title} 😎');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedAlign(
-      alignment: _align,
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeOutBack,
-      child: FilledButton.icon(
-        onPressed: _onPressed,
-        icon: const Icon(AppIcons.shoppingCart),
-        label: Text('Mua ${widget.plan.title}'),
-      ),
+    return FilledButton.icon(
+      onPressed: () => _open(context),
+      icon: const Icon(AppIcons.shoppingCart),
+      label: Text('Mua ${plan.title}'),
     );
   }
 }
