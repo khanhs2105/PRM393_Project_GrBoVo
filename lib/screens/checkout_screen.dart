@@ -1,20 +1,17 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../logic/money.dart';
 import '../logic/plans.dart';
 import '../services/app_services.dart';
-import '../services/momo_sandbox.dart';
+import '../services/vnpay_sandbox.dart';
 import '../widgets/app_icons.dart';
 import '../widgets/common.dart';
+import 'vnpay_webview_screen.dart';
 
 /// Màn thanh toán gói. Có hai kiểu:
-/// - Qua cổng MoMo môi trường thử nghiệm (sandbox): tạo đơn thật trên
-///   test-payment.momo.vn, mở trang thanh toán, app tự hỏi trạng thái đơn và
-///   kích hoạt gói khi MoMo báo thành công. Sandbox không trừ tiền thật.
+/// - Qua cổng VNPay môi trường thử nghiệm (sandbox): mở trang VNPay trong
+///   app, trả bằng thẻ test, VNPay báo thành công thì kích hoạt gói. Sandbox
+///   không trừ tiền thật.
 /// - Miễn phí (giả lập): luôn giảm 100%, không gọi cổng nào.
 ///
 /// Trả về `true` qua [Navigator.pop] khi đã kích hoạt gói.
@@ -27,8 +24,8 @@ class CheckoutScreen extends StatefulWidget {
 }
 
 enum _Method {
-  momo('MoMo (sandbox)',
-      'Cổng MoMo thử nghiệm: thẻ ATM test, QR ví, thẻ quốc tế', AppIcons.wallet),
+  vnpay('VNPay (sandbox)', 'Cổng VNPay thử nghiệm, trả bằng thẻ test bên dưới',
+      AppIcons.landmark),
   free('Miễn phí (giả lập)', 'Mã CONNOTHUONG giảm 100%, không gọi cổng nào',
       AppIcons.sparkles);
 
@@ -36,47 +33,22 @@ enum _Method {
   final String title;
   final String subtitle;
   final IconData icon;
-
-  bool get isMomo => this != _Method.free;
 }
 
-class _CheckoutScreenState extends State<CheckoutScreen>
-    with WidgetsBindingObserver {
-  _Method _method = _Method.momo;
+class _CheckoutScreenState extends State<CheckoutScreen> {
+  _Method _method =
+      VnpayConfig.isConfigured ? _Method.vnpay : _Method.free;
 
-  /// Đang bận (tạo đơn, kích hoạt gói...). Chữ hiện ở thanh dưới.
+  /// Đang bận (kích hoạt gói...). Chữ hiện ở thanh dưới.
   String? _busy;
 
-  /// Đơn MoMo đang chờ người dùng thanh toán trên trang MoMo.
-  MomoOrder? _order;
-  Timer? _poll;
-  bool _checking = false;
-
   Plan get plan => widget.plan;
-  int get _total => _method.isMomo ? plan.monthlyPrice : 0;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _poll?.cancel();
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Thanh toán xong trên trình duyệt quay lại app: hỏi MoMo ngay.
-    if (state == AppLifecycleState.resumed && _order != null) _check();
-  }
+  bool get _isVnpay => _method == _Method.vnpay;
+  int get _total => _isVnpay ? plan.monthlyPrice : 0;
 
   Future<void> _pay() async {
-    if (_method.isMomo) {
-      await _payMomo();
+    if (_isVnpay) {
+      await _payVnpay();
     } else {
       await _payFree();
     }
@@ -96,105 +68,32 @@ class _CheckoutScreenState extends State<CheckoutScreen>
     await _activate('Đã trừ: 0 ₫. Đùa thôi, miễn phí mà 😜');
   }
 
-  Future<void> _payMomo() async {
-    setState(() => _busy = 'Đang tạo đơn trên MoMo...');
-    final MomoOrder order;
-    try {
-      order = await MomoSandbox.create(
-        amount: plan.monthlyPrice,
-        orderInfo: 'Nang cap goi ${plan.name} - Alo Tra Tien',
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _busy = null);
-      await _offerFree('$e');
+  Future<void> _payVnpay() async {
+    if (!VnpayConfig.isConfigured) {
+      showSnack(context,
+          'Chưa điền khóa VNPay sandbox (lib/services/vnpay_sandbox.dart).');
       return;
     }
-    if (!mounted) return;
-    setState(() {
-      _busy = null;
-      _order = order;
-    });
-    await _openPayPage();
-    _poll?.cancel();
-    _poll = Timer.periodic(const Duration(seconds: 4), (_) => _check());
-  }
-
-  Future<void> _openPayPage() async {
-    final order = _order;
-    if (order == null) return;
-    var ok = false;
-    try {
-      ok = await launchUrl(Uri.parse(order.payUrl),
-          mode: LaunchMode.externalApplication);
-    } catch (_) {}
-    if (!ok && mounted) {
-      await Clipboard.setData(ClipboardData(text: order.payUrl));
-      if (mounted) {
-        showSnack(context,
-            'Không mở được trình duyệt. Đã chép link thanh toán, dán vào Chrome nhé.');
-      }
-    }
-  }
-
-  /// Hỏi MoMo trạng thái đơn đang chờ.
-  Future<void> _check({bool manual = false}) async {
-    final order = _order;
-    if (order == null || _checking) return;
-    _checking = true;
-    try {
-      final code = await MomoSandbox.query(order);
-      if (!mounted || _order != order) return;
-      if (code == 0) {
-        _poll?.cancel();
-        setState(() => _order = null);
-        await _activate('Đã thanh toán ${formatVnd(plan.monthlyPrice)} qua '
-            'MoMo sandbox (tiền thử nghiệm, không phải tiền thật).\n'
-            'Mã đơn: ${order.orderId}');
-      } else if (MomoSandbox.isPending(code)) {
-        if (manual) showSnack(context, 'MoMo chưa nhận được tiền, chờ chút nhé');
-      } else {
-        _poll?.cancel();
-        setState(() => _order = null);
-        showSnack(context,
-            'Thanh toán MoMo không thành công hoặc đã hủy (mã $code). Thử lại nhé.');
-      }
-    } catch (e) {
-      if (manual && mounted) showSnack(context, 'Không hỏi được MoMo: $e');
-    } finally {
-      _checking = false;
-    }
-  }
-
-  /// MoMo sandbox từ chối tạo đơn (thường là mã 99 do MoMo tắt khóa mẫu):
-  /// báo rõ và cho chuyển sang thanh toán giả lập để vẫn mua được gói.
-  Future<void> _offerFree(String error) async {
-    final useFree = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('MoMo sandbox đang từ chối'),
-        content: Text('Cổng thử nghiệm của MoMo không nhận đơn lúc này:\n'
-            '$error\n\nBạn có thể thử lại sau, hoặc dùng thanh toán giả '
-            'lập (miễn phí) để kích hoạt gói ngay.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Thử lại sau')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Dùng miễn phí')),
-        ],
-      ),
+    final txnRef = 'ALO${DateTime.now().millisecondsSinceEpoch}';
+    final url = VnpaySandbox.buildPaymentUrl(
+      amount: plan.monthlyPrice,
+      // Không dấu, không ký tự đặc biệt theo khuyến nghị của VNPay.
+      orderInfo: 'Nang cap goi ${plan.name} ma $txnRef',
+      txnRef: txnRef,
     );
-    if (useFree == true && mounted) {
-      setState(() => _method = _Method.free);
-      await _payFree();
+    final result = await Navigator.push<VnpayResult>(
+      context,
+      MaterialPageRoute(builder: (_) => VnpayWebViewScreen(url: url)),
+    );
+    if (!mounted || result == null) return;
+    if (result.success) {
+      await _activate('Đã thanh toán ${formatVnd(plan.monthlyPrice)} qua '
+          'VNPay sandbox (tiền thử nghiệm, không phải tiền thật).\n'
+          'Ngân hàng: ${result.bankCode}\n'
+          'Mã giao dịch: ${result.transactionNo}');
+    } else {
+      showSnack(context, 'Thanh toán chưa thành công: ${result.message}');
     }
-  }
-
-  void _cancelOrder() {
-    _poll?.cancel();
-    setState(() => _order = null);
   }
 
   Future<void> _activate(String detail) async {
@@ -229,9 +128,8 @@ class _CheckoutScreenState extends State<CheckoutScreen>
     final scheme = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     final price = plan.monthlyPrice;
-    final locked = _busy != null || _order != null;
+    final locked = _busy != null;
     return PopScope(
-      // Đang tạo đơn / kích hoạt thì không cho thoát giữa chừng.
       canPop: _busy == null,
       child: Scaffold(
         appBar: AppBar(title: const Text('Thanh toán')),
@@ -247,7 +145,7 @@ class _CheckoutScreenState extends State<CheckoutScreen>
                     Text('Đơn hàng', style: text.titleMedium),
                     const SizedBox(height: 12),
                     _line('Gói ${plan.title} (1 tháng)', formatVnd(price)),
-                    if (!_method.isMomo)
+                    if (!_isVnpay)
                       _line('Mã CONNOTHUONG (giảm 100%)', formatVnd(-price),
                           color: scheme.primary),
                     const Divider(height: 24),
@@ -280,12 +178,12 @@ class _CheckoutScreenState extends State<CheckoutScreen>
                   onTap: () => setState(() => _method = m),
                 ),
               ),
-            if (_method == _Method.momo) _testCardInfo(context),
+            if (_isVnpay) _testCardInfo(context),
             const SizedBox(height: 8),
             Text(
-              _method.isMomo
-                  ? 'Đây là cổng MoMo môi trường thử nghiệm: thanh toán bằng '
-                      'thẻ/ví test, không trừ tiền thật.'
+              _isVnpay
+                  ? 'Đây là cổng VNPay môi trường thử nghiệm: thanh toán bằng '
+                      'thẻ test, không trừ tiền thật.'
                   : 'Thanh toán giả lập cho vui: không kết nối ngân hàng hay '
                       'ví nào và không trừ tiền thật.',
               style: const TextStyle(fontStyle: FontStyle.italic),
@@ -295,54 +193,25 @@ class _CheckoutScreenState extends State<CheckoutScreen>
         bottomNavigationBar: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-            child: _bottom(context),
+            child: _busy != null
+                ? Row(children: [
+                    const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2.5)),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(_busy!)),
+                  ])
+                : FilledButton.icon(
+                    onPressed: _pay,
+                    style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48)),
+                    icon: const Icon(AppIcons.lock),
+                    label: Text('Thanh toán ${formatVnd(_total)}'),
+                  ),
           ),
         ),
       ),
-    );
-  }
-
-  Widget _bottom(BuildContext context) {
-    if (_busy != null) {
-      return Row(children: [
-        const SizedBox(
-            width: 22,
-            height: 22,
-            child: CircularProgressIndicator(strokeWidth: 2.5)),
-        const SizedBox(width: 12),
-        Expanded(child: Text(_busy!)),
-      ]);
-    }
-    if (_order != null) {
-      return Column(mainAxisSize: MainAxisSize.min, children: [
-        const Row(children: [
-          SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2)),
-          SizedBox(width: 10),
-          Expanded(
-              child: Text('Đang chờ MoMo xác nhận. Thanh toán xong quay lại '
-                  'app, gói sẽ tự kích hoạt.')),
-        ]),
-        const SizedBox(height: 8),
-        Row(children: [
-          TextButton(onPressed: _cancelOrder, child: const Text('Hủy')),
-          const Spacer(),
-          OutlinedButton(
-              onPressed: _openPayPage, child: const Text('Mở lại trang MoMo')),
-          const SizedBox(width: 8),
-          FilledButton(
-              onPressed: () => _check(manual: true),
-              child: const Text('Kiểm tra')),
-        ]),
-      ]);
-    }
-    return FilledButton.icon(
-      onPressed: _pay,
-      style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-      icon: const Icon(AppIcons.lock),
-      label: Text('Thanh toán ${formatVnd(_total)}'),
     );
   }
 
@@ -353,19 +222,27 @@ class _CheckoutScreenState extends State<CheckoutScreen>
               child: SelectableText(v,
                   style: const TextStyle(fontWeight: FontWeight.w600))),
         ]);
-    return _Note.child(Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Trên trang MoMo chọn "Thẻ ATM" và nhập thẻ test '
-            '(chọn ngân hàng NCB nếu được hỏi). Quét QR thì cần app MoMo '
-            'bản thử nghiệm.'),
-        const SizedBox(height: 6),
-        row('Số thẻ', '9704 0000 0000 0018'),
-        row('Tên chủ thẻ', 'NGUYEN VAN A'),
-        row('Ngày phát hành', '03/07'),
-        row('OTP', 'OTP'),
-      ],
-    ));
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Trên trang VNPay chọn "Thẻ nội địa", ngân hàng NCB, '
+              'rồi nhập thẻ test:'),
+          const SizedBox(height: 6),
+          row('Số thẻ', '9704198526191432198'),
+          row('Tên chủ thẻ', 'NGUYEN VAN A'),
+          row('Ngày phát hành', '07/15'),
+          row('OTP', '123456'),
+        ],
+      ),
+    );
   }
 
   Widget _line(String label, String value, {Color? color, bool bold = false}) {
@@ -377,27 +254,6 @@ class _CheckoutScreenState extends State<CheckoutScreen>
         Expanded(child: Text(label, style: style)),
         Text(value, style: style),
       ]),
-    );
-  }
-}
-
-class _Note extends StatelessWidget {
-  final Widget content;
-  const _Note._(this.content);
-  factory _Note(String text) => _Note._(Text(text));
-  factory _Note.child(Widget child) => _Note._(child);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: content,
     );
   }
 }
