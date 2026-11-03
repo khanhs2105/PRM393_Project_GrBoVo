@@ -1,5 +1,5 @@
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
-import { doc, setDoc, updateDoc, writeBatch, getDoc, addDoc, collection, arrayUnion, arrayRemove, Timestamp, serverTimestamp, deleteField } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, writeBatch, getDoc, addDoc, collection, arrayUnion, arrayRemove, Timestamp, serverTimestamp, deleteField, deleteDoc } from 'firebase/firestore';
 import { readFileSync } from 'fs';
 const env = await initializeTestEnvironment({ projectId: 'demo-alo', firestore: { rules: readFileSync(process.argv[2], 'utf8'), host: '127.0.0.1', port: 8080 } });
 const db = (u) => env.authenticatedContext(u, { email: `${u}@x.com` }).firestore();
@@ -12,19 +12,25 @@ const join = (d, me, code, mem) => { const b = writeBatch(d); b.update(doc(d, 'l
 
 await t('owner tạo sổ', setDoc(doc(A, 'ledgers', 'L'), { name: 'S', ownerUid: 'A', ownerMemberId: 1, memberUids: ['A'], links: { A: 1 }, linkNames: { A: 'A' }, snapshot: {} }), true);
 await t('tạo mã hạn 7 ngày', inv('AAAAAA', 2), true);
-await t('tạo mã hạn 30 ngày bị chặn', inv('ZZZZZZ', 2, 30), false);
+await t('L14: tạo mã với createdAt giả (đồng hồ máy) bị chặn', setDoc(doc(A, 'invites', 'ZZZZZZ'), { ledgerId: 'L', memberId: 2, ownerUid: 'A', createdAt: Timestamp.fromMillis(Date.now() + 30 * 864e5) }), false);
+await t('L14: tạo mã có expiresAt lệch giờ vẫn được', inv('YYYYYY', 2, 30), true);
 await t('B nhập mã (batch)', join(B, 'B', 'AAAAAA', 2), true);
 await t('B đọc được sổ', getDoc(doc(B, 'ledgers', 'L')), true);
 await t('C dùng lại mã đã dùng bị chặn', join(C, 'C', 'AAAAAA', 2), false);
+await t('M2: mã cũ chưa dùng của thành viên đã có người đứng tên bị chặn', join(C, 'C', 'YYYYYY', 2), false);
 await inv('BBBBBB', 3);
 await t('C3: B nhập mã khác để đổi tên bị chặn', join(B, 'B', 'BBBBBB', 3), false);
 await t('vào sổ kiểu cũ (không đánh dấu mã) bị chặn', updateDoc(doc(C, 'ledgers', 'L'), { memberUids: arrayUnion('C'), 'links.C': 3, 'linkNames.C': 'C', lastJoinCode: 'BBBBBB' }), false);
 await t('đánh dấu mã đã dùng mà không vào sổ bị chặn', updateDoc(doc(C, 'invites', 'BBBBBB'), { usedBy: 'C' }), false);
+await t('L10: tên quá dài khi vào sổ bị chặn', (() => { const b = writeBatch(C); b.update(doc(C, 'ledgers', 'L'), { memberUids: arrayUnion('C'), 'links.C': 3, 'linkNames.C': 'x'.repeat(101), lastJoinCode: 'BBBBBB' }); b.update(doc(C, 'invites', 'BBBBBB'), { usedBy: 'C', usedAt: serverTimestamp() }); return b.commit(); })(), false);
 await t('C nhập mã BBBBBB hợp lệ', join(C, 'C', 'BBBBBB', 3), true);
 await t('C1: chủ sổ tự thêm uid X bị chặn', updateDoc(doc(A, 'ledgers', 'L'), { memberUids: arrayUnion('X') }), false);
 await t('C1: chủ sổ thêm links.X bị chặn', updateDoc(doc(A, 'ledgers', 'L'), { 'links.X': 9 }), false);
 await t('chủ sổ publish snapshot', updateDoc(doc(A, 'ledgers', 'L'), { snapshot: { a: 1 }, name: 'S2', updatedAt: serverTimestamp() }), true);
 await t('chủ sổ đổi ownerMember (links.A)', updateDoc(doc(A, 'ledgers', 'L'), { ownerMemberId: 1, 'links.A': 1 }), true);
+await t('L15: chủ sổ chuyển B sang thành viên khác bị chặn', updateDoc(doc(A, 'ledgers', 'L'), { 'links.B': 3 }), false);
+await t('L15: chủ sổ gỡ memberUids mà giữ links bị chặn', updateDoc(doc(A, 'ledgers', 'L'), { memberUids: arrayRemove('C') }), false);
+await t('L15: chủ sổ đổi tên tài khoản khác bị chặn', updateDoc(doc(A, 'ledgers', 'L'), { 'linkNames.B': 'X' }), false);
 const note = (to, msg = 'Alo trả tiền') => addDoc(collection(A, 'notifications'), { ledgerId: 'L', ledgerName: 'S', fromUid: 'A', fromName: 'A', toUid: to, amount: 50000, message: msg, delivered: false, createdAt: serverTimestamp() });
 await t('nhắc nợ B', note('B'), true);
 await t('nhắc nợ X (ngoài sổ) bị chặn', note('X'), false);
@@ -34,7 +40,7 @@ await t('chủ sổ gỡ B', updateDoc(doc(A, 'ledgers', 'L'), { memberUids: arr
 await t('C2: B vào lại bằng mã cũ bị chặn', join(B, 'B', 'AAAAAA', 2), false);
 await inv('CCCCCC', 2);
 await t('B vào lại bằng mã mới', join(B, 'B', 'CCCCCC', 2), true);
-await inv('DDDDDD', 4, -1);
+await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'invites', 'DDDDDD'), { ledgerId: 'L', memberId: 4, ownerUid: 'A', createdAt: Timestamp.fromMillis(Date.now() - 8 * 864e5), expiresAt: exp(30) }));
 await t('mã hết hạn bị chặn', join(db('D'), 'D', 'DDDDDD', 4), false);
 await t('B không tự sửa snapshot', updateDoc(doc(B, 'ledgers', 'L'), { snapshot: {} }), false);
 await t('ảnh đại diện vẫn ghi được', setDoc(doc(B, 'avatars', 'B'), { avatar: 'abc', updatedAt: serverTimestamp() }), true);
@@ -54,6 +60,9 @@ await t('chủ sổ không "rời" sổ của mình', updateDoc(doc(A, 'ledgers'
 await t('B rời sổ mà vẫn giữ links bị chặn', updateDoc(doc(B, 'ledgers', 'L'), { memberUids: arrayRemove('B') }), false);
 await t('chủ sổ xóa sổ + mã mời trong một batch', (() => { const b = writeBatch(A); b.delete(doc(A, 'invites', 'CCCCCC')); b.delete(doc(A, 'ledgers', 'L')); return b.commit(); })(), true);
 await t('đọc sổ đã xóa trả về "không tồn tại" chứ không lỗi quyền', getDoc(doc(B, 'ledgers', 'L')), true);
+await t('L11: xóa lại sổ/mã đã bị xóa ở nơi khác không lỗi quyền', (() => { const b = writeBatch(A); b.delete(doc(A, 'invites', 'CCCCCC')); b.delete(doc(A, 'ledgers', 'L')); return b.commit(); })(), true);
+await setDoc(doc(A, 'ledgers', 'L2'), { name: 'S', ownerUid: 'A', ownerMemberId: 1, memberUids: ['A'], links: { A: 1 }, linkNames: { A: 'A' }, snapshot: {} });
+await t('người khác vẫn không xóa được sổ đang có', deleteDoc(doc(B, 'ledgers', 'L2')), false);
 console.log(`\n${pass} pass, ${fail} fail`);
 await env.cleanup();
 process.exit(fail ? 1 : 0);

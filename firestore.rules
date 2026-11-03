@@ -83,18 +83,29 @@ service cloud.firestore {
         return newMap.keys().toSet().difference(oldMap.keys().toSet()).size() == 0;
       }
 
+      // Chủ sổ chỉ được: đổi thành viên mà CHÍNH MÌNH đứng tên, và gỡ hẳn
+      // một tài khoản (bỏ khỏi memberUids và links cùng lúc). Không chuyển
+      // tài khoản người khác sang đứng tên thành viên khác.
       function isOwnerEdit() {
         let o = resource.data;
         let d = request.resource.data;
+        let removed = o.memberUids.toSet().difference(d.memberUids.toSet());
         return o.ownerUid == request.auth.uid
           && d.ownerUid == o.ownerUid
           && d.memberUids.toSet().difference(o.memberUids.toSet()).size() == 0
           && o.ownerUid in d.memberUids
           && noNewKeys(d.links, o.links)
-          && noNewKeys(d.linkNames, o.linkNames);
+          && noNewKeys(d.linkNames, o.linkNames)
+          && d.links.diff(o.links).changedKeys().hasOnly([o.ownerUid])
+          && d.links.diff(o.links).removedKeys() == removed
+          && d.linkNames.diff(o.linkNames).changedKeys().hasOnly([o.ownerUid])
+          && d.linkNames.diff(o.linkNames).removedKeys().difference(removed).size() == 0;
       }
 
-      allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+      // resource == null: sổ đã bị xóa ở nơi khác (vd. Console). Cho xóa
+      // "lại" để app bỏ được liên kết với sổ không còn tồn tại.
+      allow delete: if signedIn()
+        && (resource == null || resource.data.ownerUid == request.auth.uid);
 
       // Người được mời tự thêm mình vào sổ. Chỉ được đụng tới phần của
       // chính mình, và phải có mã mời đúng của sổ này: tài khoản đứng tên
@@ -112,13 +123,19 @@ service cloud.firestore {
           && !(me in resource.data.links)
           && inv.ledgerId == ledgerId
           && !('usedBy' in inv)
-          && inv.get('expiresAt', request.time) > request.time
+          // Thành viên đã có người đứng tên thì mã cũ chưa dùng hết hiệu lực.
+          && !(inv.memberId in resource.data.links.values())
+          // Hạn tính theo giờ server lúc tạo mã, không theo đồng hồ điện thoại.
+          && inv.createdAt is timestamp
+          && request.time < inv.createdAt + duration.value(7, 'd')
           && getAfter(invPath).data.get('usedBy', '') == me
           && newData.memberUids.toSet()
               == resource.data.memberUids.toSet().union([me].toSet())
           && newData.links.diff(resource.data.links).affectedKeys().hasOnly([me])
           && newData.links[me] == inv.memberId
-          && newData.linkNames.diff(resource.data.linkNames).affectedKeys().hasOnly([me]);
+          && newData.linkNames.diff(resource.data.linkNames).affectedKeys().hasOnly([me])
+          && newData.linkNames[me] is string
+          && newData.linkNames[me].size() <= 100;
       }
     }
 
@@ -132,8 +149,7 @@ service cloud.firestore {
         && request.resource.data.ownerUid == request.auth.uid
         && ledgerData(request.resource.data.ledgerId).ownerUid == request.auth.uid
         && !('usedBy' in request.resource.data)
-        && request.resource.data.expiresAt is timestamp
-        && request.resource.data.expiresAt < request.time + duration.value(8, 'd');
+        && request.resource.data.createdAt == request.time;
       // Người nhập mã đánh dấu "đã dùng" đúng một lần, cùng lúc với việc
       // vào sổ (getAfter thấy mình đã đứng tên thành viên ghi trong mã).
       allow update: if signedIn()
@@ -145,7 +161,8 @@ service cloud.firestore {
             .data.lastJoinCode == code
         && getAfter(/databases/$(database)/documents/ledgers/$(resource.data.ledgerId))
             .data.links[request.auth.uid] == resource.data.memberId;
-      allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+      allow delete: if signedIn()
+        && (resource == null || resource.data.ownerUid == request.auth.uid);
     }
 
     // Nhắc nợ: chỉ chủ sổ gửi, và chỉ gửi cho tài khoản đang ở trong sổ.

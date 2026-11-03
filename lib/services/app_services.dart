@@ -190,6 +190,7 @@ class App {
     } catch (e) {
       debugPrint('Không hủy được thông báo: $e');
     }
+    await shared?.forgetScheduled();
     await auth?.signOut();
     purchasedPlan = Plan.conNo;
     trialUntil = null;

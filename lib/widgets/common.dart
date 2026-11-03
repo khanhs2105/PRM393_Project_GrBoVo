@@ -81,7 +81,10 @@ class MemberAvatar extends StatelessWidget {
   }
 
   Widget _letter(ImageProvider? image) {
-    final letter = name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase();
+    final letter = name.trim().isEmpty
+        ? '?'
+        // characters: lấy trọn một ký tự (emoji gồm 2 đơn vị UTF-16).
+        : name.trim().characters.first.toUpperCase();
     final color = _colors[name.hashCode.abs() % _colors.length];
     return CircleAvatar(
       radius: radius,

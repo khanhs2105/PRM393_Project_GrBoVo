@@ -105,7 +105,7 @@ BankAccountQr? parseBankQr(String raw, {bool checkCrc = true}) {
     bin: bin,
     accountNo: accountNo,
     accountName: (name == null || name.isEmpty) ? null : name,
-    amount: root['54'] == null ? null : double.tryParse(root['54']!)?.round(),
+    amount: _qrAmount(root['54']),
     note: additional?['08'],
   );
 }
@@ -135,4 +135,13 @@ String buildBankQr({
     ..write(note == null || note.isEmpty ? '' : tlv('62', tlv('08', note)))
     ..write('6304');
   return '$body${crc16(body.toString())}';
+}
+
+/// Số tiền trong QR (tag 54): chỉ nhận số không âm dạng "50000" hoặc
+/// "50000.00". "NaN", "Infinity", số âm hay số mũ thì bỏ qua (null).
+int? _qrAmount(String? raw) {
+  if (raw == null || !RegExp(r'^\d+(\.\d+)?$').hasMatch(raw)) return null;
+  final v = double.tryParse(raw);
+  if (v == null || !v.isFinite || v > 1e12) return null;
+  return v.round();
 }

@@ -55,6 +55,13 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   /// Người đã tự gõ %. Phần còn lại tự chia đều cho những người khác.
   final Set<int> _percentLocked = {};
 
+  /// Người đã tự gõ % trong lần mở form này (khác với % cũ được khóa sẵn
+  /// khi sửa khoản chi).
+  final Set<int> _percentTyped = {};
+
+  /// Người tham gia lần chia trước, để biết ai vừa được tick thêm.
+  Set<int> _lastSelected = {};
+
   /// Số phần của từng người (kiểu theo phần).
   final Map<int, int> _parts = {};
 
@@ -113,11 +120,14 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
       if (e?.splitType == SplitType.percent) {
         _percentLocked.addAll(e!.weights.keys);
       }
+      _lastSelected = {..._selected};
     });
   }
 
   @override
   void dispose() {
+    // Thoát form mà không lưu: bỏ file ảnh vừa chép.
+    if (!_saved) _deleteTempReceipt();
     _title.dispose();
     _amount.dispose();
     _note.dispose();
@@ -218,6 +228,9 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   /// những người chưa gõ. Ví dụ 3 người, gõ A = 50% thì B, C tự thành 25%.
   void _rebalancePercent() {
     final ids = _members.map((m) => m.id!).where(_selected.contains).toList();
+    // Đang không chọn ai (vd. bấm "Bỏ chọn hết" rồi "Chọn tất cả"): giữ
+    // nguyên danh sách người đã gõ % để chọn lại không mất số đã tùy chỉnh.
+    if (ids.isEmpty) return;
     _percentLocked.removeWhere((id) => !_selected.contains(id));
     final others = ids.where((id) => !_percentLocked.contains(id)).toList();
     if (others.isEmpty) return;
@@ -241,6 +254,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
 
   void _onPercentTyped(int id) {
     _percentLocked.add(id);
+    _percentTyped.add(id);
     // Ô đang gõ sai thì chưa chia lại, để người dùng thấy lỗi và sửa.
     if (_invalidPercentIds.isNotEmpty) return;
     _rebalancePercent();
@@ -248,7 +262,16 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
 
   /// Đổi người tham gia thì chia lại % (nếu đang chia theo %).
   void _afterSelectionChanged() {
-    if (_splitType == SplitType.percent) _rebalancePercent();
+    final added = _selected.difference(_lastSelected);
+    _lastSelected = {..._selected};
+    if (_splitType != SplitType.percent) return;
+    // Tick thêm người khi đang sửa khoản cũ (mọi người cũ đều đang khóa %):
+    // chỉ giữ % người dùng vừa tự gõ, còn lại chia lại cho cả người mới.
+    // Trước đây người mới nhận 0% rồi bị bỏ khỏi khoản chi khi lưu.
+    if (added.isNotEmpty) {
+      _percentLocked.retainAll(_percentTyped);
+    }
+    _rebalancePercent();
   }
 
   // ---------- Hành động ----------
@@ -269,7 +292,20 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     final dest = p.join(dir.path,
         'receipt_${DateTime.now().millisecondsSinceEpoch}${p.extension(picked.path)}');
     await File(picked.path).copy(dest);
+    // Chọn ảnh lần nữa: xóa ảnh vừa chép lần trước (chưa được lưu vào
+    // khoản chi nào). Ảnh cũ của khoản chi thì để lúc lưu mới xóa.
+    _deleteTempReceipt();
     setState(() => _receiptPath = dest);
+  }
+
+  /// Đã lưu khoản chi (ảnh đang chọn thuộc về khoản chi, không xóa).
+  bool _saved = false;
+
+  void _deleteTempReceipt() {
+    final path = _receiptPath;
+    if (path != null && path != widget.expense?.receiptPath) {
+      deleteFileQuietly(path);
+    }
   }
 
   String _memberName(int id) =>
@@ -304,6 +340,18 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
       showSnack(context, error);
       return;
     }
+    // Chia theo %: ai được chọn mà 0% thì báo, không bỏ âm thầm.
+    if (_splitType == SplitType.percent) {
+      final zero = [
+        for (final id in _selected)
+          if ((_percentWeights[id] ?? 0) == 0) id,
+      ];
+      if (zero.isNotEmpty) {
+        showSnack(context,
+            '${zero.map(_memberName).join(', ')} đang 0%. Nhập % hoặc bỏ chọn người này.');
+        return;
+      }
+    }
     // Bỏ người có phần 0 ₫ (vd. được chọn nhưng để trống ô số tiền), để họ
     // không hiện trong khoản chi và nhật ký không đếm họ.
     final shares = Map.of(_preview()!)..removeWhere((_, v) => v == 0);
@@ -336,6 +384,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
       date: _date,
     );
     await App.expenses.save(expense);
+    _saved = true;
     // Đổi hoặc bỏ ảnh hóa đơn khi sửa: xóa file ảnh cũ khỏi máy.
     final oldReceipt = widget.expense?.receiptPath;
     if (oldReceipt != null && oldReceipt != _receiptPath) {
@@ -360,6 +409,9 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
         ok: 'Xóa');
     if (!ok) return;
     await App.expenses.delete(widget.expense!.id!);
+    _deleteTempReceipt();
+    _saved = true;
+    await deleteFileQuietly(widget.expense!.receiptPath);
     await App.activities.log(
       groupId: widget.groupId,
       groupName: _group?.name ?? '',
@@ -747,7 +799,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                     // Người tham gia có thể đã đổi ở tab khác: chia lại.
                     _percentTotal == 0
                         ? _fillEqualPercent()
-                        : setState(_rebalancePercent);
+                        : setState(_afterSelectionChanged);
                   }
                 },
               ),
