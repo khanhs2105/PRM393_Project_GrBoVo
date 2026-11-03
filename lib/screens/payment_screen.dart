@@ -77,7 +77,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
       );
 
   /// Đếm số lần nhắc khoản này hôm nay. Hết lượt thì báo và trả về false.
-  Future<bool> _takeReminderSlot() async {
+  /// Còn lượt nhắc hôm nay không (chưa trừ lượt).
+  Future<bool> _hasReminderSlot() async {
     final key = reminderCountKey(
         widget.group.id!, t.fromId, t.toId, DateTime.now());
     final count = int.tryParse(await App.settings.get(key) ?? '') ?? 0;
@@ -85,12 +86,19 @@ class _PaymentScreenState extends State<PaymentScreen> {
       if (mounted) showSnack(context, reminderLimitMessage);
       return false;
     }
-    await App.settings.set(key, '${count + 1}');
     return true;
   }
 
+  /// Trừ một lượt nhắc, chỉ gọi sau khi đã gửi được (hoặc đã vào hàng đợi).
+  Future<void> _useReminderSlot() async {
+    final key = reminderCountKey(
+        widget.group.id!, t.fromId, t.toId, DateTime.now());
+    final count = int.tryParse(await App.settings.get(key) ?? '') ?? 0;
+    await App.settings.set(key, '${count + 1}');
+  }
+
   Future<void> _share() async {
-    if (!await _takeReminderSlot()) return;
+    if (!await _hasReminderSlot()) return;
     final text = StringBuffer(_reminderText());
     if (_to!.hasBank) {
       text
@@ -98,20 +106,30 @@ class _PaymentScreenState extends State<PaymentScreen> {
         ..writeln()
         ..writeln('Quét QR để trả: $_qrUrl');
     }
-    await SharePlus.instance.share(ShareParams(text: text.toString()));
+    final result =
+        await SharePlus.instance.share(ShareParams(text: text.toString()));
+    if (result.status != ShareResultStatus.dismissed) await _useReminderSlot();
   }
 
   Future<void> _saveQr() async {
+    final client = HttpClient();
     try {
-      final client = HttpClient();
       final res = await (await client.getUrl(Uri.parse(_qrUrl))).close();
+      // Máy chủ trả lỗi (4xx/5xx) thì nội dung không phải ảnh: không lưu.
+      if (res.statusCode != HttpStatus.ok) {
+        await res.drain<void>();
+        throw StateError('Máy chủ QR đang lỗi (${res.statusCode}), thử lại sau.');
+      }
       final bytes = await consolidateHttpClientResponseBytes(res);
-      client.close();
       if (!await Gal.hasAccess()) await Gal.requestAccess();
       await Gal.putImageBytes(bytes, name: 'vietqr_${DateTime.now().millisecondsSinceEpoch}');
       if (mounted) showSnack(context, 'Đã lưu QR vào thư viện ảnh');
     } catch (e) {
-      if (mounted) showSnack(context, 'Không lưu được QR: $e');
+      if (mounted) {
+        showSnack(context, 'Không lưu được QR: ${friendlyError(e)}');
+      }
+    } finally {
+      client.close();
     }
   }
 
@@ -211,7 +229,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               'để bạn không phải nhắn tay.');
       return;
     }
-    if (!await _takeReminderSlot()) return;
+    if (!await _hasReminderSlot()) return;
     var queued = false;
     try {
       for (final at in times) {
@@ -228,6 +246,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       if (mounted) showSnack(context, 'Không gửi được nhắc nợ: ${friendlyError(e)}');
       return;
     }
+    await _useReminderSlot();
     if (mounted && queued) {
       showSnack(context,
           'Đang mất mạng: lời nhắc sẽ tự gửi khi có mạng, không cần gửi lại.');

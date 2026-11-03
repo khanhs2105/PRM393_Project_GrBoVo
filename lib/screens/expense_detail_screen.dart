@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../data/group_repository.dart';
 import '../logic/categories.dart';
 import '../logic/money.dart';
 import '../models/activity.dart';
@@ -80,6 +81,8 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
         ok: 'Xóa');
     if (!ok) return;
     await App.expenses.delete(e.id!);
+    // Không còn khoản chi nào trỏ tới ảnh hóa đơn: xóa file khỏi máy.
+    await deleteFileQuietly(e.receiptPath);
     await App.activities.log(
       groupId: widget.group.id,
       groupName: widget.group.name,

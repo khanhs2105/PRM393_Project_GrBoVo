@@ -94,6 +94,18 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
             'Có mạng app sẽ tự đẩy lại.');
       }
       final ledger = await service.fetch(id);
+      if (ledger == null) {
+        // Sổ đã bị xóa ở nơi khác (vd. Firebase Console): bỏ liên kết để
+        // bấm "Bật sổ chung" tạo được sổ mới.
+        await service.forgetDeletedLedger(widget.groupId);
+        if (mounted) {
+          setState(() {
+            _ledger = null;
+            _sharedOn = false;
+          });
+        }
+        return;
+      }
       if (mounted) setState(() => _ledger = ledger);
     } catch (e) {
       debugPrint('Không đọc được sổ chung: $e');

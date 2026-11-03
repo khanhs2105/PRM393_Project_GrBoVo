@@ -19,7 +19,9 @@ const maxVnd = 1000000000000;
 
 int? parseVnd(String input) {
   var s = input.trim().toLowerCase().replaceAll(' ', '').replaceAll('₫', '');
-  s = s.replaceAll('đ', '').replaceAll('vnd', '');
+  // Bỏ "vnđ"/"vnd" trước rồi mới bỏ "đ" (nếu bỏ "đ" trước, chữ "n" còn lại
+  // bị hiểu là hậu tố "nghìn").
+  s = s.replaceAll('vnđ', '').replaceAll('vnd', '').replaceAll('đ', '');
   if (s.isEmpty) return null;
 
   var multiplier = 1;
@@ -31,27 +33,50 @@ int? parseVnd(String input) {
     s = s.substring(0, s.length - 2);
   }
 
-  if (multiplier == 1) {
-    // Không có hậu tố: dấu . và , là dấu phân cách hàng nghìn.
-    s = s.replaceAll('.', '').replaceAll(',', '');
-    if (!RegExp(r'^\d+$').hasMatch(s)) return null;
-    final v = int.tryParse(s);
-    return (v == null || v > maxVnd) ? null : v;
+  int? capped(num v) {
+    if (!v.isFinite || v < 0) return null;
+    final r = v.round();
+    return r > maxVnd ? null : r;
   }
-  // Có hậu tố mà số có dạng nghìn "2.500k" / "1,200k": dấu . , là phân
-  // cách hàng nghìn (2.500.000 ₫), không phải dấu thập phân.
-  if (RegExp(r'^\d{1,3}([.,]\d{3})+$').hasMatch(s)) {
-    s = s.replaceAll('.', '').replaceAll(',', '');
+
+  if (multiplier == 1) {
+    if (RegExp(r'^\d+$').hasMatch(s)) return capped(int.tryParse(s) ?? -1);
+    // "150.000" / "1,234,567": nhóm đúng 3 chữ số.
+    if (_grouped.hasMatch(s)) return capped(int.parse(_digits(s)));
+    // Số chép từ app ngân hàng có phần lẻ: "150.000,00", "150,000.00",
+    // "1500000.00". Phần nguyên phải có phân cách nghìn hoặc từ 4 chữ số,
+    // để "1.5" (quên chữ "tr") không thành 2 ₫ mà bị báo sai.
+    final m = RegExp(r'^(.+)([.,])(\d{1,2})$').firstMatch(s);
+    if (m != null) {
+      final whole = m.group(1)!;
+      final sep = m.group(2)!;
+      final groupedWhole = _grouped.hasMatch(whole) && !whole.contains(sep);
+      final plainWhole = RegExp(r'^\d{4,}$').hasMatch(whole);
+      if (groupedWhole || plainWhole) {
+        return capped(double.parse('${_digits(whole)}.${m.group(3)}'));
+      }
+    }
+    // "1.2.3", "1.5", "1,5"...: không rõ ý, báo không hợp lệ.
+    return null;
+  }
+  // Có hậu tố "k" mà số có dạng nghìn "2.500k" / "1,200k": dấu . , là phân
+  // cách hàng nghìn (2.500.000 ₫). Với "tr" thì "1.250tr" là 1,25 triệu.
+  // Số bắt đầu bằng 0 ("0.500k") luôn là số thập phân.
+  if (multiplier == 1000 && _grouped.hasMatch(s)) {
+    return capped(int.parse(_digits(s)) * multiplier);
   }
   // Còn lại cho phép số thập phân, ví dụ "1.5tr" hoặc "1,5tr". Chỉ nhận
   // chữ số và một dấu thập phân (chặn "1e309k", "-5k", "Infinity").
   s = s.replaceAll(',', '.');
   if (!RegExp(r'^\d+(\.\d+)?$').hasMatch(s)) return null;
   final v = double.tryParse(s);
-  if (v == null || !v.isFinite) return null;
-  final result = (v * multiplier).round();
-  return result > maxVnd ? null : result;
+  return v == null ? null : capped(v * multiplier);
 }
+
+/// Số có phân cách hàng nghìn, nhóm đầu không bắt đầu bằng 0: "1.500.000".
+final _grouped = RegExp(r'^[1-9]\d{0,2}([.,]\d{3})+$');
+
+String _digits(String s) => s.replaceAll('.', '').replaceAll(',', '');
 
 /// Chia đều [amount] cho [memberIds].
 ///
@@ -131,6 +156,8 @@ const percentScale = 10000;
 int? parsePercent(String input) {
   final s = input.trim().replaceAll('%', '').replaceAll(',', '.');
   if (s.isEmpty) return null;
+  // Chỉ nhận chữ số và một dấu thập phân ("NaN", "1e2" bị từ chối).
+  if (!RegExp(r'^\d+(\.\d+)?$').hasMatch(s)) return null;
   final v = double.tryParse(s);
   if (v == null || v < 0 || v > 100) return null;
   return (v * 100).round();

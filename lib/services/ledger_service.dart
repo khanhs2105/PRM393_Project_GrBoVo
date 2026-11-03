@@ -103,6 +103,9 @@ class LedgerNotice {
   final int amount;
   final String message;
   final DateTime? createdAt;
+
+  /// Lời nhắc hẹn giờ: lúc báo trên máy người nợ.
+  final DateTime? deliverAt;
   final bool delivered;
 
   const LedgerNotice({
@@ -113,8 +116,12 @@ class LedgerNotice {
     required this.amount,
     required this.message,
     required this.createdAt,
+    this.deliverAt,
     required this.delivered,
   });
+
+  /// Lúc lời nhắc "tới" người nợ: giờ hẹn, hoặc lúc gửi.
+  DateTime? get shownAt => deliverAt ?? createdAt;
 
   factory LedgerNotice.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final d = doc.data() ?? const {};
@@ -126,6 +133,7 @@ class LedgerNotice {
       amount: (d['amount'] as num?)?.toInt() ?? 0,
       message: d['message'] as String? ?? '',
       createdAt: (d['createdAt'] as Timestamp?)?.toDate(),
+      deliverAt: (d['deliverAt'] as Timestamp?)?.toDate(),
       delivered: d['delivered'] == true,
     );
   }
@@ -256,10 +264,23 @@ class LedgerService {
         'updatedAt': FieldValue.serverTimestamp(),
       }).timeout(_timeout);
       return true;
+    } on FirebaseException catch (e) {
+      // Sổ đã bị xóa ở nơi khác: màn nhóm sẽ thấy và bỏ liên kết, không
+      // báo "chưa đồng bộ".
+      if (e.code == 'not-found') return true;
+      debugPrint('Không đồng bộ được sổ chung: $e');
+      return false;
     } catch (e) {
       debugPrint('Không đồng bộ được sổ chung: $e');
       return false;
     }
+  }
+
+  /// Bỏ liên kết nhóm [groupId] với sổ chung đã không còn trên Firestore
+  /// (bị xóa ở nơi khác), để bật lại sổ chung được.
+  Future<void> forgetDeletedLedger(int groupId) async {
+    if (uid == null || _local == null) return;
+    await _settings.set(_key(groupId), null);
   }
 
   /// Đổi tên hiển thị của mình ở mọi sổ chung đang tham gia, để chủ sổ và
@@ -310,16 +331,18 @@ class LedgerService {
   Future<void> unshare(int groupId) async {
     final id = await ledgerIdOf(groupId);
     if (id == null) return;
+    // Đọc sổ lỗi (kể cả quá giờ) thì ném lỗi và giữ khóa: lúc này lệnh xóa
+    // chưa vào hàng đợi, bỏ khóa là sổ còn mãi trên Firestore.
+    final doc = await _ledgers.doc(id).get().timeout(_timeout);
+    final codes = [
+      for (final c in (doc.data()?['inviteCodes'] as List?) ?? const []) '$c'
+    ];
+    final batch = _db.batch();
+    for (final c in codes) {
+      batch.delete(_invites.doc(c));
+    }
+    batch.delete(_ledgers.doc(id));
     try {
-      final doc = await _ledgers.doc(id).get().timeout(_timeout);
-      final codes = [
-        for (final c in (doc.data()?['inviteCodes'] as List?) ?? const []) '$c'
-      ];
-      final batch = _db.batch();
-      for (final c in codes) {
-        batch.delete(_invites.doc(c));
-      }
-      batch.delete(_ledgers.doc(id));
       await batch.commit().timeout(_timeout);
     } on TimeoutException {
       // Mất mạng: lệnh xóa đã vào hàng đợi, sẽ gửi khi có mạng.
@@ -367,6 +390,10 @@ class LedgerService {
   /// thành viên đó trong sổ.
   Future<String> createInvite(SharedLedger ledger, Member member) async {
     final me = _requireUid();
+    if (ledger.uidsOf(member.id).isNotEmpty) {
+      throw StateError('${member.name} đã có tài khoản trong sổ. Muốn đổi '
+          'người khác thì gỡ tài khoản đó trước rồi mời lại.');
+    }
     for (var attempt = 0; attempt < 5; attempt++) {
       final code = generateInviteCode();
       final ref = _invites.doc(code);
@@ -382,8 +409,9 @@ class LedgerService {
             'memberName': member.name,
             'ownerUid': me,
             'ownerName': _myName,
+            // Mã chỉ dùng một lần và hết hạn sau [inviteTtl] tính từ
+            // createdAt (giờ server). expiresAt chỉ để hiển thị.
             'createdAt': FieldValue.serverTimestamp(),
-            // Mã chỉ dùng một lần và hết hạn sau [inviteTtl].
             'expiresAt': Timestamp.fromDate(DateTime.now().add(inviteTtl)),
           });
           // Ghi lại mã vào sổ để khi tắt sổ chung thì xóa được hết mã.
@@ -420,8 +448,14 @@ class LedgerService {
       throw const FormatException(
           'Mã mời này đã được dùng. Nhờ chủ sổ tạo mã mới cho bạn nhé.');
     }
-    final expires = data['expiresAt'];
-    if (expires is! Timestamp || expires.toDate().isBefore(DateTime.now())) {
+    // Hạn thật do server kiểm (theo giờ server). Ở đây chỉ báo sớm khi
+    // chắc chắn đã hết hạn, chừa 1 ngày cho đồng hồ điện thoại bị lệch.
+    final created = data['createdAt'];
+    if (created is Timestamp &&
+        created
+            .toDate()
+            .add(inviteTtl + const Duration(days: 1))
+            .isBefore(DateTime.now())) {
       throw const FormatException(
           'Mã mời đã hết hạn. Nhờ chủ sổ tạo mã mới cho bạn nhé.');
     }
@@ -448,7 +482,13 @@ class LedgerService {
         'usedBy': me,
         'usedAt': FieldValue.serverTimestamp(),
       });
-    await batch.commit().timeout(_timeout);
+    try {
+      await batch.commit().timeout(_timeout);
+    } on FirebaseException catch (e) {
+      if (e.code != 'permission-denied') rethrow;
+      throw const FormatException('Mã mời không còn dùng được: đã hết hạn, '
+          'hoặc thành viên này đã có người đứng tên. Nhờ chủ sổ tạo mã mới.');
+    }
     return ledgerId;
   }
 
@@ -547,9 +587,15 @@ class LedgerService {
         .where('toUid', isEqualTo: me)
         .where('ledgerId', isEqualTo: ledgerId)
         .snapshots()
-        .map((q) => [for (final d in q.docs) LedgerNotice.fromDoc(d)]
-          ..sort((a, b) => (b.createdAt ?? DateTime.now())
-              .compareTo(a.createdAt ?? DateTime.now())));
+        .map((q) {
+      // Lời nhắc hẹn giờ chưa tới giờ thì chưa hiện.
+      final now = DateTime.now();
+      return [
+        for (final d in q.docs) LedgerNotice.fromDoc(d),
+      ].where((n) => n.deliverAt == null || !n.deliverAt!.isAfter(now)).toList()
+        ..sort((a, b) =>
+            (b.shownAt ?? now).compareTo(a.shownAt ?? now));
+    });
   }
 
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _inbox;
@@ -575,9 +621,30 @@ class LedgerService {
         for (final change in q.docChanges)
           if (change.type == DocumentChangeType.added) change.doc,
       ];
+      if (added.isEmpty) return;
+      final now = DateTime.now();
+      // Đọc sổ một lần cho mỗi sổ: hết nợ chủ sổ hoặc không còn ở trong
+      // sổ thì không báo / không hẹn giờ nữa (tránh chạy đua với
+      // _watchPaidOff khi sổ cập nhật trước lúc nhận lời nhắc).
+      final stillOwes = <String, bool>{};
+      Future<bool> owes(String ledgerId) async {
+        final known = stillOwes[ledgerId];
+        if (known != null) return known;
+        bool v;
+        try {
+          final l = await fetch(ledgerId);
+          v = l != null && _owesOwner(l, me);
+        } on FirebaseException catch (e) {
+          // Bị gỡ khỏi sổ thì không đọc được sổ nữa.
+          v = e.code != 'permission-denied';
+        } catch (_) {
+          v = true; // Mạng lỗi: cứ báo như trước.
+        }
+        return stillOwes[ledgerId] = v;
+      }
+
       // Mở app sau nhiều ngày: nhiều lời nhắc đã tới hạn cùng lúc. Mỗi sổ
       // chỉ hiện lời nhắc mới nhất, các cái cũ hơn chỉ đánh dấu đã nhận.
-      final now = DateTime.now();
       final newestDue = <String, String>{};
       DateTime when(DocumentSnapshot<Map<String, dynamic>> d) =>
           (d.data()?['deliverAt'] as Timestamp?)?.toDate() ??
@@ -599,16 +666,25 @@ class LedgerService {
         // Phòng hờ: chỉ hiện lời nhắc gửi cho đúng mình, không phải mình gửi.
         final data = doc.data() ?? const {};
         if (data['toUid'] != me || data['fromUid'] == me) continue;
-        final deliverAt = (data['deliverAt'] as Timestamp?)?.toDate();
+        final deliverAt = n.deliverAt;
         try {
           final id = n.id.hashCode & 0x7fffffff;
           final title = '${n.fromName} nhắc nợ · ${n.ledgerName}';
-          if (deliverAt != null && deliverAt.isAfter(now)) {
-            // Lời nhắc hẹn giờ: đặt lịch ngay trên máy người nợ.
+          final active = await owes(n.ledgerId);
+          if (active && deliverAt != null && deliverAt.isAfter(now)) {
+            // Lời nhắc hẹn giờ: đặt lịch trên máy người nợ (đặt lại cùng id
+            // nếu đã đặt). Chưa đánh dấu "đã nhận" để đăng xuất / đăng nhập
+            // lại (hủy hết lịch) thì lần mở sau vẫn đặt lại được.
             await NotificationService.schedule(
                 at: deliverAt, title: title, body: n.message, id: id);
             await _trackScheduled(n.ledgerId, id);
-          } else if (shown.contains(doc.id)) {
+            continue;
+          }
+          // Lời nhắc hẹn giờ đã đặt lịch trên máy này thì máy đã tự báo lúc
+          // tới giờ: chỉ đánh dấu đã nhận, không báo lần nữa.
+          final alreadyScheduled = deliverAt != null &&
+              (await _scheduledIds(n.ledgerId)).contains(id);
+          if (active && shown.contains(doc.id) && !alreadyScheduled) {
             await NotificationService.show(
                 id: id, title: title, body: n.message);
           }
@@ -648,6 +724,20 @@ class LedgerService {
     await _settings.set(_schedKey(ledgerId), ids.join(','));
   }
 
+  /// Đăng xuất (đã hủy mọi lịch trên máy): quên danh sách lời nhắc đã hẹn
+  /// giờ, để lần đăng nhập sau đặt lại hoặc báo bù đúng.
+  Future<void> forgetScheduled() async {
+    final me = uid;
+    if (me == null || _local == null) return;
+    try {
+      await _local!.delete('app_settings',
+          where: "key LIKE ? ESCAPE '\\'",
+          whereArgs: ['reminders\\_${me.replaceAll('_', r'\_')}\\_%']);
+    } catch (e) {
+      debugPrint('Không xóa được lịch nhắc nợ đã lưu: $e');
+    }
+  }
+
   Future<void> _cancelScheduled(String ledgerId) async {
     final ids = await _scheduledIds(ledgerId);
     if (ids.isEmpty) return;
@@ -659,6 +749,14 @@ class LedgerService {
       }
     }
     await _settings.set(_schedKey(ledgerId), null);
+  }
+
+  /// Tài khoản [me] còn nợ chủ sổ trong sổ [l] không.
+  static bool _owesOwner(SharedLedger l, String me) {
+    final mine = l.memberIdOf(me);
+    if (mine == null) return false;
+    return l.data.transfers
+        .any((t) => t.fromId == mine && t.toId == l.ownerMemberId);
   }
 
   /// Theo dõi các sổ mình được mời: hết nợ chủ sổ (chủ sổ đã ghi nhận trả)
@@ -678,10 +776,7 @@ class LedgerService {
         }
         final l = SharedLedger.fromDoc(change.doc);
         if (l.isOwner(me)) continue;
-        final mine = l.memberIdOf(me);
-        final owes = l.data.transfers
-            .any((t) => t.fromId == mine && t.toId == l.ownerMemberId);
-        if (!owes) await _cancelScheduled(ledgerId);
+        if (!_owesOwner(l, me)) await _cancelScheduled(ledgerId);
       }
     }, onError: (Object e) => debugPrint('paid watch: $e'));
   }

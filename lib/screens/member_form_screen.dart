@@ -212,16 +212,16 @@ class _MemberFormScreenState extends State<MemberFormScreen> {
             const SizedBox(height: 12),
             TextFormField(
               controller: _accountNo,
-              keyboardType: TextInputType.number,
+              keyboardType: TextInputType.text,
               decoration: const InputDecoration(labelText: 'Số tài khoản'),
-              // Số tài khoản ngân hàng VN: 6–19 chữ số. Sai thì QR VietQR
-              // sinh ra cũng sai.
+              // Số tài khoản / số định danh VN: 6–19 chữ hoặc số (một số
+              // ngân hàng và ví cấp số có chữ cái). Sai thì QR VietQR sai.
               validator: (v) {
                 final t = (v ?? '').replaceAll(' ', '');
                 if (t.isEmpty) return null;
-                return RegExp(r'^\d{6,19}$').hasMatch(t)
+                return RegExp(r'^[A-Za-z0-9]{6,19}$').hasMatch(t)
                     ? null
-                    : 'Số tài khoản chỉ gồm 6–19 chữ số';
+                    : 'Số tài khoản gồm 6–19 chữ hoặc số';
               },
             ),
             const SizedBox(height: 12),
