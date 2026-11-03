@@ -117,7 +117,7 @@ class _PlanCard extends StatelessWidget {
   }
 }
 
-/// Nút "Mua": mở màn thanh toán giả. Trước đây nút né tay người bấm 3 lần
+/// Nút "Mua": mở màn thanh toán (MoMo sandbox hoặc giả lập). Trước đây nút né tay người bấm 3 lần
 /// nên nhiều người tưởng không mua được; giờ bấm là vào thanh toán luôn.
 class _BuyButton extends StatelessWidget {
   final Plan plan;
