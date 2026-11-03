@@ -137,6 +137,24 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
       ledger = _ledger;
     }
     if (ledger == null || !mounted) return;
+    // Người được mời quét QR của chủ sổ để trả tiền, nên chủ sổ cần có
+    // tài khoản ngân hàng trước khi mời.
+    final ownerId = ledger.ownerMemberId;
+    final owner = s.members.where((x) => x.id == ownerId).firstOrNull;
+    if (owner != null && !owner.hasBank) {
+      final add = await confirm(
+          context,
+          'Thêm tài khoản nhận tiền của bạn?',
+          'Người được mời sẽ thấy mã QR của bạn để chuyển khoản trả nợ. '
+              'Bạn (${owner.name}) chưa có tài khoản ngân hàng nên họ chưa '
+              'quét được.',
+          ok: 'Thêm ngay');
+      if (!mounted) return;
+      if (add) {
+        await _open(MemberFormScreen(member: owner));
+        return;
+      }
+    }
     await showInviteDialog(context, ledger, m);
   }
 
