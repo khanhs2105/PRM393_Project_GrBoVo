@@ -28,6 +28,8 @@ dependencies:
   crypto: ^3.0.6
   # Mở trang thanh toán VNPay sandbox trong app
   webview_flutter: ^4.13.0
+  # Mở app ngân hàng từ trang PayOS
+  url_launcher: ^6.3.1
 
 dev_dependencies:
   flutter_test:
