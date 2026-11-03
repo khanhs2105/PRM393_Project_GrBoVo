@@ -117,12 +117,8 @@ class _AccountScreenState extends State<AccountScreen> {
   @override
   Widget build(BuildContext context) {
     final user = _auth.currentUser;
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) Navigator.pop(context, false);
-      },
-      child: Scaffold(
+    // Màn này là tab "Hồ sơ" trên thanh dưới, không còn được push riêng.
+    return Scaffold(
         appBar: AppBar(title: const Text('Tài khoản')),
         body: StreamBuilder<UserProfile?>(
           stream: _profile,
@@ -239,7 +235,6 @@ class _AccountScreenState extends State<AccountScreen> {
             );
           },
         ),
-      ),
     );
   }
 }
