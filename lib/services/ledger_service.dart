@@ -305,15 +305,37 @@ class LedgerService {
   }
 
   /// Tắt sổ chung: xóa sổ trên Firestore, thành viên không xem được nữa.
+  /// Xóa luôn các mã mời của sổ. Lỗi (không phải mất mạng) thì giữ khóa
+  /// trên máy và ném lỗi, để không bỏ rơi một sổ vẫn còn trên Firestore.
   Future<void> unshare(int groupId) async {
     final id = await ledgerIdOf(groupId);
     if (id == null) return;
     try {
-      await _ledgers.doc(id).delete().timeout(_timeout);
-    } catch (e) {
-      debugPrint('Không xóa được sổ chung: $e');
+      final doc = await _ledgers.doc(id).get().timeout(_timeout);
+      final codes = [
+        for (final c in (doc.data()?['inviteCodes'] as List?) ?? const []) '$c'
+      ];
+      final batch = _db.batch();
+      for (final c in codes) {
+        batch.delete(_invites.doc(c));
+      }
+      batch.delete(_ledgers.doc(id));
+      await batch.commit().timeout(_timeout);
+    } on TimeoutException {
+      // Mất mạng: lệnh xóa đã vào hàng đợi, sẽ gửi khi có mạng.
     }
     await _settings.set(_key(groupId), null);
+  }
+
+  /// Thành viên tự rời sổ: không xem sổ và không nhận nhắc nợ nữa.
+  Future<void> leave(String ledgerId) async {
+    final me = _requireUid();
+    await _ledgers.doc(ledgerId).update({
+      'memberUids': FieldValue.arrayRemove([me]),
+      'links.$me': FieldValue.delete(),
+      'linkNames.$me': FieldValue.delete(),
+    }).timeout(_timeout);
+    await _cancelScheduled(ledgerId);
   }
 
   Future<SharedLedger?> fetch(String ledgerId) async {
@@ -363,6 +385,10 @@ class LedgerService {
             'createdAt': FieldValue.serverTimestamp(),
             // Mã chỉ dùng một lần và hết hạn sau [inviteTtl].
             'expiresAt': Timestamp.fromDate(DateTime.now().add(inviteTtl)),
+          });
+          // Ghi lại mã vào sổ để khi tắt sổ chung thì xóa được hết mã.
+          tx.update(_ledgers.doc(ledger.id), {
+            'inviteCodes': FieldValue.arrayUnion([code]),
           });
         }).timeout(_timeout);
         return code;
@@ -427,15 +453,22 @@ class LedgerService {
   }
 
   /// Chủ sổ gỡ một tài khoản khỏi sổ (vd. ai đó nhập nhầm mã).
-  Future<void> removeAccount(String ledgerId, String accountUid) =>
-      _ledgers.doc(ledgerId).update({
+  /// Mất mạng thì lệnh gỡ vào hàng đợi và tự gửi khi có mạng (không báo lỗi).
+  Future<void> removeAccount(String ledgerId, String accountUid) async {
+    try {
+      await _ledgers.doc(ledgerId).update({
         'memberUids': FieldValue.arrayRemove([accountUid]),
         'links.$accountUid': FieldValue.delete(),
         'linkNames.$accountUid': FieldValue.delete(),
       }).timeout(_timeout);
+    } on TimeoutException {
+      debugPrint('Gỡ tài khoản sẽ gửi khi có mạng');
+    }
+  }
 
-  /// Chủ sổ gửi nhắc nợ tới tài khoản [toUid].
-  Future<void> remind({
+  /// Chủ sổ gửi nhắc nợ tới tài khoản [toUid]. Trả về true nếu đã gửi,
+  /// false nếu đang mất mạng (lời nhắc tự gửi khi có mạng).
+  Future<bool> remind({
     required SharedLedger ledger,
     required String toUid,
     required int amount,
@@ -449,19 +482,28 @@ class LedgerService {
     if (toUid == me) {
       throw StateError('Không tự nhắc nợ chính mình được');
     }
-    await _notices.add({
-      // Hẹn giờ: máy người nợ nhận ngay rồi tự đặt lịch trên máy họ.
-      if (at != null) 'deliverAt': Timestamp.fromDate(at),
-      'ledgerId': ledger.id,
-      'ledgerName': ledger.name,
-      'fromUid': me,
-      'fromName': _myName,
-      'toUid': toUid,
-      'amount': amount,
-      'message': message,
-      'delivered': false,
-      'createdAt': FieldValue.serverTimestamp(),
-    }).timeout(_timeout);
+    // Tạo id trước rồi set: mất mạng thì lệnh ghi nằm trong hàng đợi và tự
+    // gửi khi có mạng. Trả về false (đang chờ mạng) thay vì báo lỗi, để
+    // người dùng không bấm gửi lại thành 2 lời nhắc.
+    final ref = _notices.doc();
+    try {
+      await ref.set({
+        // Hẹn giờ: máy người nợ nhận ngay rồi tự đặt lịch trên máy họ.
+        if (at != null) 'deliverAt': Timestamp.fromDate(at),
+        'ledgerId': ledger.id,
+        'ledgerName': ledger.name,
+        'fromUid': me,
+        'fromName': _myName,
+        'toUid': toUid,
+        'amount': amount,
+        'message': message,
+        'delivered': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      }).timeout(_timeout);
+    } on TimeoutException {
+      return false;
+    }
+    return true;
   }
 
   /// Tìm tài khoản của người nợ trong lượt chuyển [t] của nhóm [groupId]
@@ -523,6 +565,7 @@ class LedgerService {
     } catch (e) {
       debugPrint('Không xin được quyền thông báo: $e');
     }
+    _watchPaidOff(me);
     _inbox = _notices
         .where('toUid', isEqualTo: me)
         .where('delivered', isEqualTo: false)
@@ -564,6 +607,7 @@ class LedgerService {
             // Lời nhắc hẹn giờ: đặt lịch ngay trên máy người nợ.
             await NotificationService.schedule(
                 at: deliverAt, title: title, body: n.message, id: id);
+            await _trackScheduled(n.ledgerId, id);
           } else if (shown.contains(doc.id)) {
             await NotificationService.show(
                 id: id, title: title, body: n.message);
@@ -582,6 +626,64 @@ class LedgerService {
   Future<void> stopInbox() async {
     await _inbox?.cancel();
     _inbox = null;
+    await _paidWatch?.cancel();
+    _paidWatch = null;
+  }
+
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _paidWatch;
+
+  String _schedKey(String ledgerId) => 'reminders_${uid}_$ledgerId';
+
+  Future<List<int>> _scheduledIds(String ledgerId) async {
+    if (_local == null) return const [];
+    final raw = await _settings.get(_schedKey(ledgerId));
+    if (raw == null || raw.isEmpty) return const [];
+    return [for (final p in raw.split(',')) ?int.tryParse(p)];
+  }
+
+  /// Nhớ id thông báo đã hẹn giờ của sổ [ledgerId], để hủy khi trả xong nợ.
+  Future<void> _trackScheduled(String ledgerId, int id) async {
+    if (_local == null) return;
+    final ids = {...await _scheduledIds(ledgerId), id};
+    await _settings.set(_schedKey(ledgerId), ids.join(','));
+  }
+
+  Future<void> _cancelScheduled(String ledgerId) async {
+    final ids = await _scheduledIds(ledgerId);
+    if (ids.isEmpty) return;
+    for (final id in ids) {
+      try {
+        await NotificationService.cancel(id);
+      } catch (e) {
+        debugPrint('Không hủy được nhắc nợ #$id: $e');
+      }
+    }
+    await _settings.set(_schedKey(ledgerId), null);
+  }
+
+  /// Theo dõi các sổ mình được mời: hết nợ chủ sổ (chủ sổ đã ghi nhận trả)
+  /// hoặc bị gỡ khỏi sổ thì hủy các lời nhắc đã hẹn giờ trên máy, để không
+  /// còn báo "Bạn đang nợ..." với số tiền cũ.
+  void _watchPaidOff(String me) {
+    _paidWatch?.cancel();
+    _paidWatch = _ledgers
+        .where('memberUids', arrayContains: me)
+        .snapshots()
+        .listen((q) async {
+      for (final change in q.docChanges) {
+        final ledgerId = change.doc.id;
+        if (change.type == DocumentChangeType.removed) {
+          await _cancelScheduled(ledgerId);
+          continue;
+        }
+        final l = SharedLedger.fromDoc(change.doc);
+        if (l.isOwner(me)) continue;
+        final mine = l.memberIdOf(me);
+        final owes = l.data.transfers
+            .any((t) => t.fromId == mine && t.toId == l.ownerMemberId);
+        if (!owes) await _cancelScheduled(ledgerId);
+      }
+    }, onError: (Object e) => debugPrint('paid watch: $e'));
   }
 }
 

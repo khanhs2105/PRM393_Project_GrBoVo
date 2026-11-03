@@ -1,8 +1,8 @@
 import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
@@ -75,7 +75,12 @@ class App {
 
   static final ads = AdPolicy();
 
+  static AppLifecycleListener? _lifecycle;
+
   static Future<void> init() async {
+    // Mở lại app (từ nền) thì tính lại gói: dùng thử hết hạn trong lúc app
+    // nằm nền thì quay về Con Nợ ngay, không đợi khởi động lại.
+    _lifecycle ??= AppLifecycleListener(onResume: _refreshPlan);
     banks = parseBanks(await rootBundle.loadString('assets/banks.json'));
   }
 

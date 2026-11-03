@@ -80,6 +80,11 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     final group = await App.groups.getById(widget.groupId);
     final members = await App.groups.members(widget.groupId);
     if (!mounted) return;
+    if (members.isEmpty) {
+      showSnack(context, 'Nhóm chưa có thành viên, thêm thành viên trước nhé');
+      Navigator.pop(context);
+      return;
+    }
     final e = widget.expense;
     setState(() {
       _group = group;
@@ -279,7 +284,20 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     return _selected.isEmpty ? 'người trả' : _memberName(_selected.first);
   }
 
+  /// Đang lưu: chặn bấm "Lưu" lần hai tạo bản ghi trùng (và pop 2 lần).
+  bool _saving = false;
+
   Future<void> _save() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await _doSave();
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _doSave() async {
     if (!_formKey.currentState!.validate()) return;
     final error = _splitError();
     if (error != null) {
@@ -827,7 +845,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           child: FilledButton.icon(
-            onPressed: _save,
+            onPressed: _saving ? null : _save,
             icon: const Icon(AppIcons.check),
             label: Text(_isEdit ? 'Lưu thay đổi' : 'Thêm khoản chi'),
           ),

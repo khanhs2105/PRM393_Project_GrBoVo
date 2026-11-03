@@ -238,7 +238,16 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
         'Toàn bộ khoản chi và lịch sử trả tiền của nhóm sẽ bị xóa.',
         ok: 'Xóa');
     if (!ok) return;
-    await App.shared?.unshare(g.id!);
+    try {
+      await App.shared?.unshare(g.id!);
+    } catch (e) {
+      // Không tắt được sổ chung thì chưa xóa nhóm, kẻo sổ còn trên mạng
+      // mà không ai quản lý được nữa.
+      if (mounted) {
+        showSnack(context, 'Chưa tắt được sổ chung: ${friendlyError(e)}');
+      }
+      return;
+    }
     await App.groups.delete(g.id!);
     await App.activities.log(
       groupId: null,

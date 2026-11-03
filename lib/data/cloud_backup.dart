@@ -4,7 +4,11 @@ import 'app_database.dart';
 
 /// Các bảng được sao lưu lên Firestore, theo thứ tự cha trước con
 /// (khôi phục thì chèn theo thứ tự này, xóa theo thứ tự ngược lại).
-/// Bảng app_settings không sao lưu: gói tài khoản đã nằm trong hồ sơ người dùng.
+/// Bảng app_settings không sao lưu (gói tài khoản đã nằm trong hồ sơ người
+/// dùng), trừ các khóa "nhóm nào là sổ chung nào" ([ledgerKeyPrefix]): mất
+/// chúng thì sau khi khôi phục, sổ chung cũ bị bỏ rơi.
+const ledgerKeyPrefix = 'ledger_';
+
 const backupTables = [
   'groups',
   'members',
@@ -22,9 +26,14 @@ Future<Map<String, Object?>> dumpDatabase(Database db) async {
     final rows = await db.query(t);
     tables[t] = [for (final r in rows) Map<String, Object?>.from(r)];
   }
+  final ledgerKeys = await db.query('app_settings',
+      where: 'key LIKE ?', whereArgs: ['$ledgerKeyPrefix%']);
   return {
     'schemaVersion': AppDatabase.version,
     'tables': tables,
+    'ledgerKeys': {
+      for (final r in ledgerKeys) r['key'] as String: r['value'] as String?,
+    },
     'counts': {for (final e in tables.entries) e.key: e.value.length},
   };
 }
@@ -49,6 +58,15 @@ Future<void> restoreDatabase(Database db, Map<String, dynamic> snapshot) async {
       for (final r in rows) {
         await txn.insert(t, Map<String, Object?>.from(r as Map));
       }
+    }
+    // Khóa sổ chung cũ trỏ tới id nhóm cũ: bỏ hết rồi lấy theo bản sao lưu,
+    // để không đẩy nhầm một nhóm khác (trùng id) lên sổ chung.
+    await txn.delete('app_settings',
+        where: 'key LIKE ?', whereArgs: ['$ledgerKeyPrefix%']);
+    final keys = (snapshot['ledgerKeys'] as Map?) ?? const {};
+    for (final e in keys.entries) {
+      if (e.value == null) continue;
+      await txn.insert('app_settings', {'key': '${e.key}', 'value': '${e.value}'});
     }
   });
 }

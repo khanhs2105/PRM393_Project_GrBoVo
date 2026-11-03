@@ -48,6 +48,25 @@ void main() {
     await b.close();
   });
 
+  test('sao lưu giữ khóa sổ chung, khôi phục bỏ khóa cũ của máy', () async {
+    final a = await open('a');
+    await a.insert('app_settings', {'key': 'ledger_u1_1', 'value': 'L-ABC'});
+    await a.insert('app_settings', {'key': 'plan', 'value': 'chuNo'});
+    final snap = await dumpDatabase(a);
+    expect(snap['ledgerKeys'], {'ledger_u1_1': 'L-ABC'});
+
+    final b = await open('b');
+    await b.insert('app_settings', {'key': 'ledger_u1_7', 'value': 'L-OLD'});
+    await restoreDatabase(b, snap);
+    final keys = await b.query('app_settings',
+        where: 'key LIKE ?', whereArgs: ['ledger_%']);
+    expect(keys, [
+      {'key': 'ledger_u1_1', 'value': 'L-ABC'},
+    ]);
+    await a.close();
+    await b.close();
+  });
+
   test('bản sao lưu từ app mới hơn thì từ chối', () async {
     final db = await open('c');
     await expectLater(

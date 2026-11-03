@@ -223,6 +223,28 @@ class _LedgerView extends StatelessWidget {
   final String? myUid;
   const _LedgerView({required this.ledger, required this.myUid});
 
+  /// Tự rời sổ (nhập nhầm mã, hoặc không muốn ở trong sổ nữa).
+  Future<void> _leave(BuildContext context) async {
+    final ok = await confirm(
+        context,
+        'Rời sổ "${ledger.name}"?',
+        'Bạn sẽ không xem được sổ và không nhận nhắc nợ nữa. Muốn vào lại '
+            'thì nhờ chủ sổ gửi mã mời mới.',
+        ok: 'Rời sổ');
+    if (!ok) return;
+    try {
+      await App.shared!.leave(ledger.id);
+      if (context.mounted) {
+        showSnack(context, 'Đã rời sổ');
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        showSnack(context, 'Chưa rời sổ được: ${friendlyError(e)}');
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final d = ledger.data;
@@ -232,7 +254,14 @@ class _LedgerView extends StatelessWidget {
     final owedToMe = [for (final t in d.transfers) if (t.toId == me) t];
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     return Scaffold(
-      appBar: AppBar(title: Text(ledger.name)),
+      appBar: AppBar(title: Text(ledger.name), actions: [
+        if (!ledger.isOwner(myUid))
+          IconButton(
+            tooltip: 'Rời sổ',
+            icon: const Icon(AppIcons.logOut),
+            onPressed: () => _leave(context),
+          ),
+      ]),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: [

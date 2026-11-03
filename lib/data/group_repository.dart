@@ -5,6 +5,9 @@ import 'package:sqflite_common/sqlite_api.dart';
 import '../models/group.dart';
 import '../models/member.dart';
 
+/// Số thành viên tối thiểu của một nhóm.
+const minGroupMembers = 2;
+
 class GroupRepository {
   final Database db;
   GroupRepository(this.db);
@@ -100,6 +103,14 @@ class GroupRepository {
       [memberId],
     );
     if (used.isNotEmpty) return false;
+    // Nhóm phải còn ít nhất 2 người (xóa hết thì màn thêm khoản chi và
+    // "lắc chọn người bao" bị lỗi).
+    final left = await db.rawQuery(
+      'SELECT COUNT(*) AS n FROM members WHERE group_id = '
+      '(SELECT group_id FROM members WHERE id = ?)',
+      [memberId],
+    );
+    if (((left.first['n'] as int?) ?? 0) <= minGroupMembers) return false;
     await db.delete('members', where: 'id = ?', whereArgs: [memberId]);
     return true;
   }
