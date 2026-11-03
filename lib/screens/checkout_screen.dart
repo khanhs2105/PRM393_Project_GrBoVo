@@ -27,10 +27,8 @@ class CheckoutScreen extends StatefulWidget {
 }
 
 enum _Method {
-  momoAtm('Thẻ ATM qua MoMo (sandbox)',
-      'Cổng MoMo thử nghiệm, nhập thẻ test bên dưới', AppIcons.landmark),
-  momoWallet('Ví MoMo (sandbox)',
-      'Quét QR bằng app MoMo bản thử nghiệm', AppIcons.wallet),
+  momo('MoMo (sandbox)',
+      'Cổng MoMo thử nghiệm: thẻ ATM test, QR ví, thẻ quốc tế', AppIcons.wallet),
   free('Miễn phí (giả lập)', 'Mã CONNOTHUONG giảm 100%, không gọi cổng nào',
       AppIcons.sparkles);
 
@@ -44,7 +42,7 @@ enum _Method {
 
 class _CheckoutScreenState extends State<CheckoutScreen>
     with WidgetsBindingObserver {
-  _Method _method = _Method.momoAtm;
+  _Method _method = _Method.momo;
 
   /// Đang bận (tạo đơn, kích hoạt gói...). Chữ hiện ở thanh dưới.
   String? _busy;
@@ -105,12 +103,11 @@ class _CheckoutScreenState extends State<CheckoutScreen>
       order = await MomoSandbox.create(
         amount: plan.monthlyPrice,
         orderInfo: 'Nang cap goi ${plan.name} - Alo Tra Tien',
-        atm: _method == _Method.momoAtm,
       );
     } catch (e) {
       if (!mounted) return;
       setState(() => _busy = null);
-      showSnack(context, 'Không tạo được đơn MoMo: $e');
+      await _offerFree('$e');
       return;
     }
     if (!mounted) return;
@@ -146,7 +143,7 @@ class _CheckoutScreenState extends State<CheckoutScreen>
     if (order == null || _checking) return;
     _checking = true;
     try {
-      final code = await MomoSandbox.query(order.orderId);
+      final code = await MomoSandbox.query(order);
       if (!mounted || _order != order) return;
       if (code == 0) {
         _poll?.cancel();
@@ -166,6 +163,32 @@ class _CheckoutScreenState extends State<CheckoutScreen>
       if (manual && mounted) showSnack(context, 'Không hỏi được MoMo: $e');
     } finally {
       _checking = false;
+    }
+  }
+
+  /// MoMo sandbox từ chối tạo đơn (thường là mã 99 do MoMo tắt khóa mẫu):
+  /// báo rõ và cho chuyển sang thanh toán giả lập để vẫn mua được gói.
+  Future<void> _offerFree(String error) async {
+    final useFree = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('MoMo sandbox đang từ chối'),
+        content: Text('Cổng thử nghiệm của MoMo không nhận đơn lúc này:\n'
+            '$error\n\nBạn có thể thử lại sau, hoặc dùng thanh toán giả '
+            'lập (miễn phí) để kích hoạt gói ngay.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Thử lại sau')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Dùng miễn phí')),
+        ],
+      ),
+    );
+    if (useFree == true && mounted) {
+      setState(() => _method = _Method.free);
+      await _payFree();
     }
   }
 
@@ -257,12 +280,7 @@ class _CheckoutScreenState extends State<CheckoutScreen>
                   onTap: () => setState(() => _method = m),
                 ),
               ),
-            if (_method == _Method.momoAtm) _testCardInfo(context),
-            if (_method == _Method.momoWallet)
-              _Note(
-                  'Trang MoMo hiện mã QR. Cần cài app MoMo bản thử nghiệm '
-                  '(MoMo UAT) để quét. Không có app đó thì chọn "Thẻ ATM qua '
-                  'MoMo" cho dễ.'),
+            if (_method == _Method.momo) _testCardInfo(context),
             const SizedBox(height: 8),
             Text(
               _method.isMomo
@@ -338,7 +356,9 @@ class _CheckoutScreenState extends State<CheckoutScreen>
     return _Note.child(Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Thẻ test của MoMo sandbox (chọn ngân hàng NCB nếu được hỏi):'),
+        const Text('Trên trang MoMo chọn "Thẻ ATM" và nhập thẻ test '
+            '(chọn ngân hàng NCB nếu được hỏi). Quét QR thì cần app MoMo '
+            'bản thử nghiệm.'),
         const SizedBox(height: 6),
         row('Số thẻ', '9704 0000 0000 0018'),
         row('Tên chủ thẻ', 'NGUYEN VAN A'),
