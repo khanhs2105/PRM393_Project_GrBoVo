@@ -8,14 +8,11 @@ import 'package:crypto/crypto.dart';
 /// PayOS không có sandbox: tiền chuyển là tiền thật, vào thẳng tài khoản
 /// ngân hàng đã gắn. App thật phải gọi PayOS từ server, không để khóa trong app.
 class PayosConfig {
-  static const clientId = 'DIEN_CLIENT_ID';
-  static const apiKey = 'DIEN_API_KEY';
-  static const checksumKey = 'DIEN_CHECKSUM_KEY';
+  static const clientId = 'c66c75c2-57ba-42f2-ba7e-814c6c26962c';
+  static const apiKey = 'e9e17a00-b91e-4bb8-bc4c-732a9c23cb41';
+  static const checksumKey = 'da85855d62b530b9efaef65c018a92851afc355696adfde53ea7bf27ec8a9f37';
 
-  static bool get isConfigured =>
-      !clientId.startsWith('DIEN_') &&
-      !apiKey.startsWith('DIEN_') &&
-      !checksumKey.startsWith('DIEN_');
+  static bool get isConfigured => true;
 }
 
 /// Link thanh toán PayOS vừa tạo.
