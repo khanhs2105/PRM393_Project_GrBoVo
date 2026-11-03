@@ -75,41 +75,86 @@ class _RootShellState extends State<RootShell> {
       body: page,
       bottomNavigationBar: DecoratedBox(
         decoration: BoxDecoration(
+          color: Theme.of(context).navigationBarTheme.backgroundColor ??
+              scheme.surface,
           border: Border(top: BorderSide(color: scheme.outlineVariant)),
         ),
-        child: NavigationBar(
-          selectedIndex: _index,
-          onDestinationSelected: _onSelect,
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-          destinations: [
-            const NavigationDestination(
-              icon: Icon(AppIcons.house),
-              label: 'Nhóm',
-            ),
-            const NavigationDestination(
-              icon: Icon(AppIcons.history),
-              label: 'Hoạt động',
-            ),
-            NavigationDestination(
-              tooltip: 'Tạo nhóm nhanh',
-              icon: Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: scheme.primary,
-                  shape: BoxShape.circle,
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 64,
+            child: Row(children: [
+              _tab(0, AppIcons.house, 'Nhóm'),
+              _tab(1, AppIcons.history, 'Hoạt động'),
+              Expanded(
+                child: Center(
+                  child: Tooltip(
+                    message: 'Tạo nhóm nhanh',
+                    child: Material(
+                      color: scheme.primary,
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: () => _onSelect(_plusSlot),
+                        child: SizedBox(
+                          width: 46,
+                          height: 46,
+                          child: Icon(AppIcons.plus,
+                              color: scheme.onPrimary, size: 24),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-                child: Icon(AppIcons.plus, color: scheme.onPrimary, size: 26),
               ),
-              label: '',
+              _tab(3, AppIcons.crown, 'Gói'),
+              _tab(4, AppIcons.circleUser, 'Hồ sơ'),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Một ô tab: icon trên, chữ một dòng bên dưới, tất cả căn giữa.
+  Widget _tab(int i, IconData icon, String label) {
+    final scheme = Theme.of(context).colorScheme;
+    final selected = _index == i;
+    final color = selected ? scheme.onSurface : scheme.onSurfaceVariant;
+    return Expanded(
+      child: InkWell(
+        onTap: () => _onSelect(i),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 52,
+              height: 30,
+              decoration: BoxDecoration(
+                color: selected
+                    ? scheme.surfaceContainerHighest
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: Icon(icon, size: 22, color: color),
             ),
-            const NavigationDestination(
-              icon: Icon(AppIcons.crown),
-              label: 'Gói',
-            ),
-            const NavigationDestination(
-              icon: Icon(AppIcons.circleUser),
-              label: 'Hồ sơ',
+            const SizedBox(height: 4),
+            // Máy hẹp thì thu nhỏ chữ chứ không xuống dòng.
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  softWrap: false,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    color: color,
+                  ),
+                ),
+              ),
             ),
           ],
         ),
