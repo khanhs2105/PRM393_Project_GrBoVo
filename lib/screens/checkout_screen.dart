@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../logic/money.dart';
@@ -61,6 +63,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   /// Đang bận (kích hoạt gói...). Chữ hiện ở thanh dưới.
   String? _busy;
 
+  /// Đơn PayOS đang chờ ngân hàng xác nhận.
+  PayosLink? _payosLink;
+  String? _payosNote;
+  Timer? _payosPoll;
+  int _payosTries = 0;
+  bool _payosChecking = false;
+
+  @override
+  void dispose() {
+    _payosPoll?.cancel();
+    super.dispose();
+  }
+
   Plan get plan => widget.plan;
   bool get _isVnpay => _method == _Method.vnpay;
   bool get _isFree => _method == _Method.free;
@@ -97,41 +112,104 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
     if (!mounted) return;
-    setState(() => _busy = null);
+    setState(() {
+      _busy = null;
+      _payosLink = link;
+      _payosNote = null;
+    });
+    await _openPayos();
+  }
+
+  /// Mở (lại) trang PayOS. Đóng trang hoặc PayOS chuyển về thì bắt đầu chờ
+  /// ngân hàng xác nhận: chuyển khoản thường mất vài giây tới một phút mới
+  /// được PayOS ghi nhận, hỏi ngay một lần dễ báo nhầm "chưa thanh toán".
+  Future<void> _openPayos() async {
+    final link = _payosLink;
+    if (link == null) return;
     final ret = await Navigator.push<PayosReturn>(
       context,
       MaterialPageRoute(
         builder: (_) => PayosWebViewScreen(url: link.checkoutUrl),
       ),
     );
-    if (!mounted) return;
+    if (!mounted || _payosLink != link) return;
     if (ret != null && ret.cancelled) {
+      setState(() => _payosLink = null);
       showSnack(context, 'Bạn đã hủy thanh toán');
       return;
     }
-    // URL trả về không có chữ ký, nên hỏi lại PayOS cho chắc.
-    setState(() => _busy = 'Đang kiểm tra thanh toán với PayOS...');
+    _startPayosPolling();
+  }
+
+  void _startPayosPolling() {
+    _payosPoll?.cancel();
+    _payosTries = 0;
+    _checkPayos();
+    _payosPoll = Timer.periodic(const Duration(seconds: 3), (_) {
+      _payosTries++;
+      if (_payosTries > 40) {
+        // Khoảng 2 phút: thôi tự hỏi, để người dùng bấm "Kiểm tra lại".
+        _payosPoll?.cancel();
+        if (mounted) {
+          setState(() => _payosNote =
+              'Chưa thấy tiền về. Nếu bạn đã chuyển khoản, đợi chút rồi bấm '
+              '"Kiểm tra lại".');
+        }
+        return;
+      }
+      _checkPayos();
+    });
+  }
+
+  Future<void> _checkPayos({bool manual = false}) async {
+    final link = _payosLink;
+    if (link == null || _payosChecking) return;
+    _payosChecking = true;
     String status;
     try {
       status = await Payos.getStatus(link.orderCode);
     } catch (e) {
       status = '';
+      if (manual && mounted) showSnack(context, '$e');
+    } finally {
+      _payosChecking = false;
     }
-    if (!mounted) return;
-    if (status == 'PAID') {
-      await _activate(
-        'Đã thanh toán ${formatVnd(plan.monthlyPrice)} qua PayOS.\n'
-        'Mã đơn: ${link.orderCode}',
-      );
-    } else {
-      setState(() => _busy = null);
-      showSnack(
-        context,
-        status.isEmpty
-            ? 'Không kiểm tra được trạng thái đơn ${link.orderCode}'
-            : 'Đơn ${link.orderCode} chưa thanh toán ($status)',
-      );
+    if (!mounted || _payosLink != link) return;
+    switch (status) {
+      case 'PAID':
+        _payosPoll?.cancel();
+        setState(() => _payosLink = null);
+        await _activate(
+          'Đã thanh toán ${formatVnd(plan.monthlyPrice)} qua PayOS.\n'
+          'Mã đơn: ${link.orderCode}',
+        );
+      case 'CANCELLED' || 'EXPIRED' || 'FAILED':
+        _payosPoll?.cancel();
+        setState(() => _payosLink = null);
+        showSnack(context,
+            'Đơn ${link.orderCode} đã ${_statusText(status)}, tạo đơn mới nhé');
+      default:
+        if (manual) {
+          setState(() => _payosNote =
+              'Chưa thấy tiền về (${_statusText(status)}). Chuyển khoản xong '
+              'thường mất vài giây tới một phút.');
+        }
     }
+  }
+
+  static String _statusText(String s) => switch (s) {
+        'PENDING' => 'đang chờ thanh toán',
+        'PROCESSING' => 'đang xử lý',
+        'CANCELLED' => 'bị hủy',
+        'EXPIRED' => 'hết hạn',
+        'FAILED' => 'thất bại',
+        '' => 'không hỏi được PayOS',
+        _ => s,
+      };
+
+  void _cancelPayos() {
+    _payosPoll?.cancel();
+    setState(() => _payosLink = null);
   }
 
   Future<void> _payFree() async {
@@ -214,7 +292,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final scheme = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     final price = plan.monthlyPrice;
-    final locked = _busy != null;
+    final locked = _busy != null || _payosLink != null;
     return PopScope(
       canPop: _busy == null,
       child: Scaffold(
@@ -287,7 +365,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         bottomNavigationBar: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-            child: _busy != null
+            child: _payosLink != null && _busy == null
+                ? _payosWaiting(context)
+                : _busy != null
                 ? Row(
                     children: [
                       const SizedBox(
@@ -310,6 +390,52 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _payosWaiting(BuildContext context) {
+    final link = _payosLink!;
+    final polling = _payosPoll?.isActive ?? false;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            if (polling)
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              const Icon(AppIcons.timer, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                _payosNote ??
+                    'Đang chờ ngân hàng xác nhận đơn ${link.orderCode}. '
+                        'Chuyển khoản xong gói sẽ tự kích hoạt.',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            TextButton(onPressed: _cancelPayos, child: const Text('Hủy')),
+            const Spacer(),
+            OutlinedButton(
+              onPressed: _openPayos,
+              child: const Text('Mở lại mã QR'),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: () => _checkPayos(manual: true),
+              child: const Text('Kiểm tra lại'),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
