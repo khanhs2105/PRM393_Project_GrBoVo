@@ -5,14 +5,36 @@ import 'package:crypto/crypto.dart';
 
 /// Gọi cổng thanh toán MoMo môi trường THỬ NGHIỆM (test-payment.momo.vn).
 ///
-/// Khóa dưới đây là bộ khóa mẫu công khai trong tài liệu và code mẫu của
+/// Các khóa dưới đây là bộ khóa mẫu công khai trong tài liệu và code mẫu của
 /// MoMo, chỉ dùng được ở sandbox, không trừ tiền thật. Ứng dụng thật phải
 /// ký và tạo đơn trên server, không để secretKey trong app.
+class MomoKeys {
+  final String partnerCode;
+  final String accessKey;
+  final String secretKey;
+  const MomoKeys(this.partnerCode, this.accessKey, this.secretKey);
+}
+
 class MomoSandbox {
   static const _endpoint = 'https://test-payment.momo.vn/v2/gateway/api';
-  static const partnerCode = 'MOMOBKUN20180529';
-  static const _accessKey = 'klm05TvNBzhg7h7j';
-  static const _secretKey = 'at67qH6mk8w5Y1nAyMoYKMWACiEi2bsa';
+
+  /// Bộ khóa trong code mẫu chính thức hiện tại của MoMo (API v2).
+  static const officialKeys = MomoKeys(
+      'MOMO', 'F8BBA842ECF85', 'K951B6PE1waDMi640xX08PD3vg6EkVlz');
+
+  /// Bộ khóa mẫu cũ, nhiều tài khoản đã bị MoMo tắt một số kiểu thanh toán.
+  static const legacyKeys = MomoKeys(
+      'MOMOBKUN20180529', 'klm05TvNBzhg7h7j', 'at67qH6mk8w5Y1nAyMoYKMWACiEi2bsa');
+
+  /// Thử lần lượt: MoMo có lúc từ chối một bộ khóa / kiểu thanh toán với
+  /// mã 99 ("Declined due to general reasons"), nên lỗi thì thử cái sau.
+  /// payWithMethod mở trang có đủ cách trả: QR ví, thẻ ATM, thẻ quốc tế.
+  static const attempts = [
+    (officialKeys, 'payWithMethod'),
+    (officialKeys, 'captureWallet'),
+    (legacyKeys, 'captureWallet'),
+    (legacyKeys, 'payWithATM'),
+  ];
 
   /// MoMo bắt buộc có hai URL này; app không có server nên dùng trang của
   /// MoMo và tự hỏi trạng thái đơn bằng [query].
@@ -21,35 +43,47 @@ class MomoSandbox {
 
   static const _timeout = Duration(seconds: 20);
 
-  /// Ký HMAC-SHA256 chuỗi raw theo đúng thứ tự khóa MoMo yêu cầu.
-  static String sign(String raw) =>
-      Hmac(sha256, utf8.encode(_secretKey)).convert(utf8.encode(raw)).toString();
+  /// Ký HMAC-SHA256 chuỗi raw.
+  static String sign(String raw, MomoKeys keys) =>
+      Hmac(sha256, utf8.encode(keys.secretKey))
+          .convert(utf8.encode(raw))
+          .toString();
 
   /// Chuỗi raw để ký khi tạo đơn (khóa xếp theo bảng chữ cái).
   static String createRaw({
+    required MomoKeys keys,
     required String orderId,
     required int amount,
     required String orderInfo,
     required String requestType,
   }) =>
-      'accessKey=$_accessKey&amount=$amount&extraData='
+      'accessKey=${keys.accessKey}&amount=$amount&extraData='
       '&ipnUrl=$_ipnUrl&orderId=$orderId&orderInfo=$orderInfo'
-      '&partnerCode=$partnerCode&redirectUrl=$_redirectUrl'
+      '&partnerCode=${keys.partnerCode}&redirectUrl=$_redirectUrl'
       '&requestId=$orderId&requestType=$requestType';
 
-  /// Tạo đơn và trả về link trang thanh toán (payUrl) cùng mã đơn.
-  ///
-  /// [atm] = true mở trang nhập thẻ ATM thử nghiệm; false mở trang QR ví MoMo.
+  /// Tạo đơn, thử lần lượt các cách trong [attempts] cho tới khi MoMo nhận.
   static Future<MomoOrder> create({
     required int amount,
     required String orderInfo,
-    bool atm = false,
   }) async {
-    final orderId = 'ALO${DateTime.now().millisecondsSinceEpoch}';
-    final requestType = atm ? 'payWithATM' : 'captureWallet';
+    Object? lastError;
+    for (final (keys, type) in attempts) {
+      try {
+        return await _create(keys, type, amount, orderInfo);
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    throw lastError ?? MomoException('MoMo từ chối tạo đơn', -1);
+  }
+
+  static Future<MomoOrder> _create(
+      MomoKeys keys, String requestType, int amount, String orderInfo) async {
+    final orderId = 'ALO${DateTime.now().microsecondsSinceEpoch}';
     final body = {
-      'partnerCode': partnerCode,
-      'accessKey': _accessKey,
+      'partnerCode': keys.partnerCode,
+      'accessKey': keys.accessKey,
       'requestId': orderId,
       'amount': amount,
       'orderId': orderId,
@@ -58,13 +92,17 @@ class MomoSandbox {
       'ipnUrl': _ipnUrl,
       'extraData': '',
       'requestType': requestType,
+      'autoCapture': true,
       'lang': 'vi',
-      'signature': sign(createRaw(
-        orderId: orderId,
-        amount: amount,
-        orderInfo: orderInfo,
-        requestType: requestType,
-      )),
+      'signature': sign(
+          createRaw(
+            keys: keys,
+            orderId: orderId,
+            amount: amount,
+            orderInfo: orderInfo,
+            requestType: requestType,
+          ),
+          keys),
     };
     final res = await _post('$_endpoint/create', body);
     final code = res['resultCode'];
@@ -73,21 +111,22 @@ class MomoSandbox {
       throw MomoException(res['message']?.toString() ?? 'MoMo từ chối tạo đơn',
           code is int ? code : -1);
     }
-    return MomoOrder(orderId, payUrl);
+    return MomoOrder(orderId, payUrl, keys);
   }
 
   /// Hỏi trạng thái đơn. resultCode 0 là đã thanh toán, 1000 là đang chờ
   /// người dùng xác nhận, 7000/7002 là đang xử lý; mã khác là thất bại/hủy.
-  static Future<int> query(String orderId) async {
-    final raw = 'accessKey=$_accessKey&orderId=$orderId'
-        '&partnerCode=$partnerCode&requestId=$orderId';
+  static Future<int> query(MomoOrder order) async {
+    final keys = order.keys;
+    final raw = 'accessKey=${keys.accessKey}&orderId=${order.orderId}'
+        '&partnerCode=${keys.partnerCode}&requestId=${order.orderId}';
     final res = await _post('$_endpoint/query', {
-      'partnerCode': partnerCode,
-      'accessKey': _accessKey,
-      'requestId': orderId,
-      'orderId': orderId,
+      'partnerCode': keys.partnerCode,
+      'accessKey': keys.accessKey,
+      'requestId': order.orderId,
+      'orderId': order.orderId,
       'lang': 'vi',
-      'signature': sign(raw),
+      'signature': sign(raw, keys),
     });
     final code = res['resultCode'];
     return code is int ? code : -1;
@@ -120,7 +159,10 @@ class MomoSandbox {
 class MomoOrder {
   final String orderId;
   final String payUrl;
-  const MomoOrder(this.orderId, this.payUrl);
+
+  /// Bộ khóa đã tạo đơn; hỏi trạng thái phải ký bằng đúng bộ này.
+  final MomoKeys keys;
+  const MomoOrder(this.orderId, this.payUrl, this.keys);
 }
 
 class MomoException implements Exception {

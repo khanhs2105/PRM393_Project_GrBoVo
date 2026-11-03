@@ -4,24 +4,31 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('chuỗi ký tạo đơn MoMo đúng thứ tự và chữ ký HMAC-SHA256', () {
     final raw = MomoSandbox.createRaw(
+      keys: MomoSandbox.officialKeys,
       orderId: 'ALO1',
       amount: 29000,
       orderInfo: 'Test',
-      requestType: 'payWithATM',
+      requestType: 'payWithMethod',
     );
     expect(
         raw,
-        'accessKey=klm05TvNBzhg7h7j&amount=29000&extraData='
+        'accessKey=F8BBA842ECF85&amount=29000&extraData='
         '&ipnUrl=https://momo.vn&orderId=ALO1&orderInfo=Test'
-        '&partnerCode=MOMOBKUN20180529&redirectUrl=https://momo.vn'
-        '&requestId=ALO1&requestType=payWithATM');
-    expect(MomoSandbox.sign(raw),
-        '8dac2e27599736a0ad48eb31ee6eb64d064c9b3e46a4b9b5bc0b1a603a4fb319');
+        '&partnerCode=MOMO&redirectUrl=https://momo.vn'
+        '&requestId=ALO1&requestType=payWithMethod');
+    expect(MomoSandbox.sign(raw, MomoSandbox.officialKeys),
+        '893879e13bbe7debdb9c6bacfa1e54710779fd714a8330e6d2a9a985276d3894');
+  });
+
+  test('thử bộ khóa chính thức trước, bộ khóa cũ sau', () {
+    expect(MomoSandbox.attempts.first.$1.partnerCode, 'MOMO');
+    expect(MomoSandbox.attempts.first.$2, 'payWithMethod');
+    expect(MomoSandbox.attempts.last.$1.partnerCode, 'MOMOBKUN20180529');
   });
 
   test('mã đang chờ của MoMo', () {
     expect(MomoSandbox.isPending(1000), isTrue);
     expect(MomoSandbox.isPending(0), isFalse);
-    expect(MomoSandbox.isPending(1006), isFalse);
+    expect(MomoSandbox.isPending(99), isFalse);
   });
 }
