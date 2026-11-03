@@ -58,7 +58,7 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
-        <!-- Mở trang thanh toán MoMo sandbox bằng trình duyệt (url_launcher). -->
+        <!-- Mở link https bằng trình duyệt khi cần. -->
         <intent>
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="https"/>
