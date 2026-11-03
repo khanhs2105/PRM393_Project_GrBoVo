@@ -39,7 +39,10 @@ service cloud.firestore {
 
     // Sổ chung: chủ sổ ghi, thành viên (đã nhập mã mời) chỉ đọc.
     match /ledgers/{ledgerId} {
-      allow read: if signedIn() && request.auth.uid in resource.data.memberUids;
+      // Sổ đã bị xóa (resource == null) thì đọc ra "không tồn tại" thay vì
+      // báo lỗi quyền, để app hiện đúng "Sổ đã bị xóa".
+      allow read: if signedIn()
+        && (resource == null || request.auth.uid in resource.data.memberUids);
 
       allow create: if signedIn()
         && request.resource.data.ownerUid == request.auth.uid
@@ -49,7 +52,21 @@ service cloud.firestore {
       // tài khoản (gỡ người). Thêm tài khoản chỉ đi qua mã mời (isJoining),
       // để chủ sổ không tự kéo người lạ vào sổ rồi gửi nhắc nợ giả.
       allow update: if signedIn()
-        && (isOwnerEdit() || isJoining(ledgerId) || isRenaming());
+        && (isOwnerEdit() || isJoining(ledgerId) || isRenaming() || isLeaving());
+
+      // Thành viên (không phải chủ sổ) tự rời sổ: chỉ bỏ chính mình.
+      function isLeaving() {
+        let me = request.auth.uid;
+        let o = resource.data;
+        let d = request.resource.data;
+        return me in o.links
+          && me != o.ownerUid
+          && d.diff(o).affectedKeys().hasOnly(['memberUids', 'links', 'linkNames'])
+          && d.memberUids.toSet() == o.memberUids.toSet().difference([me].toSet())
+          && !(me in d.links)
+          && o.links.diff(d.links).affectedKeys().hasOnly([me])
+          && o.linkNames.diff(d.linkNames).affectedKeys().hasOnly([me]);
+      }
 
       // Thành viên đổi tên hiển thị của chính mình trong sổ.
       function isRenaming() {
@@ -72,6 +89,7 @@ service cloud.firestore {
         return o.ownerUid == request.auth.uid
           && d.ownerUid == o.ownerUid
           && d.memberUids.toSet().difference(o.memberUids.toSet()).size() == 0
+          && o.ownerUid in d.memberUids
           && noNewKeys(d.links, o.links)
           && noNewKeys(d.linkNames, o.linkNames);
       }

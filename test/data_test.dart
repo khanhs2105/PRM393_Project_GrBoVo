@@ -143,6 +143,16 @@ void main() {
     expect(await groups.deleteMember(ids[2]), isTrue);
   });
 
+  test('nhóm phải còn ít nhất 2 người', () async {
+    final (gid, ids) = await makeGroup();
+    expect(ids.length, greaterThan(2));
+    expect(await groups.deleteMember(ids.last), isTrue);
+    for (final id in ids.sublist(0, ids.length - 1)) {
+      await groups.deleteMember(id);
+    }
+    expect((await groups.members(gid)).length, 2);
+  });
+
   test('nhân bản nhóm: chép thành viên, không chép khoản chi', () async {
     final (id, ids) = await makeGroup();
     await groups.updateMember((await groups.members(id))

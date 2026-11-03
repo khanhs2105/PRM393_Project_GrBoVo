@@ -212,9 +212,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
       return;
     }
     if (!await _takeReminderSlot()) return;
+    var queued = false;
     try {
       for (final at in times) {
-        await service.remind(
+        // Mất mạng: các mốc còn lại vẫn vào hàng đợi, không báo lỗi giữa chừng.
+        queued |= !await service.remind(
           ledger: ledger,
           toUid: debtorUid,
           amount: t.amount,
@@ -224,6 +226,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
       }
     } catch (e) {
       if (mounted) showSnack(context, 'Không gửi được nhắc nợ: ${friendlyError(e)}');
+      return;
+    }
+    if (mounted && queued) {
+      showSnack(context,
+          'Đang mất mạng: lời nhắc sẽ tự gửi khi có mạng, không cần gửi lại.');
       return;
     }
     if (mounted) {

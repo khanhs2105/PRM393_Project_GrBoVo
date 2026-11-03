@@ -83,7 +83,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 for (final e in items)
                   if (_filter == 0 ||
                       (_filter == 1 && e.$2.transfers.isNotEmpty) ||
-                      (_filter == 2 && e.$2.transfers.isEmpty))
+                      (_filter == 2 && _settled(e.$2)))
                     e,
               ];
         return Scaffold(
@@ -214,7 +214,8 @@ class _SummaryCard extends StatelessWidget {
     final remaining = items.fold<int>(
         0, (sum, e) => sum + e.$2.transfers.fold<int>(0, (a, t) => a + t.amount));
     final open = items.where((e) => e.$2.transfers.isNotEmpty).length;
-    final done = items.length - open;
+    // Nhóm chưa có khoản chi nào không tính là "đã trả xong".
+    final done = items.where((e) => _settled(e.$2)).length;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(18),
@@ -241,7 +242,9 @@ class _SummaryCard extends StatelessWidget {
           Row(children: [
             _Tile(
               color: AppTheme.owe,
-              label: 'Còn phải trả',
+              // Tổng các lượt chuyển còn lại của mọi nhóm (gồm cả người khác
+              // nợ nhau), không phải riêng số bạn phải trả.
+              label: 'Chưa thanh toán',
               value: formatVnd(remaining),
               sub: '$open nhóm',
             ),
@@ -388,7 +391,9 @@ class _GroupCard extends StatelessWidget {
                   style: const TextStyle(
                       fontSize: 14, fontWeight: FontWeight.w700)),
               const SizedBox(height: 6),
-              pending == 0
+              summary.expenses.isEmpty
+                  ? const StatusPill('Chưa chi', Colors.blueGrey)
+                  : pending == 0
                   ? const StatusPill('Đã xong', AppTheme.owed)
                   : StatusPill('Còn $pending lượt', AppTheme.owe),
             ]),
@@ -400,3 +405,6 @@ class _GroupCard extends StatelessWidget {
     );
   }
 }
+
+/// Nhóm đã có khoản chi và mọi người đã trả xong.
+bool _settled(GroupSummary s) => s.expenses.isNotEmpty && s.transfers.isEmpty;

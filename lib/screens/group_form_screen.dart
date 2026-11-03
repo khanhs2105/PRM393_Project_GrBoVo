@@ -33,7 +33,20 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
     super.dispose();
   }
 
+  /// Đang lưu: chặn bấm "Lưu" lần hai tạo bản ghi trùng (và pop 2 lần).
+  bool _saving = false;
+
   Future<void> _save() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await _doSave();
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _doSave() async {
     if (!_formKey.currentState!.validate()) return;
     if (_isEdit) {
       await App.groups
@@ -142,7 +155,7 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: FilledButton(onPressed: _save, child: const Text('Lưu')),
+          child: FilledButton(onPressed: _saving ? null : _save, child: const Text('Lưu')),
         ),
       ),
     );

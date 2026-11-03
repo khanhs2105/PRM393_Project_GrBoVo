@@ -46,6 +46,14 @@ await t('người ngoài sổ không đổi tên được', updateDoc(doc(db('Z'
 await t('hồ sơ: plan hợp lệ', setDoc(doc(B, 'users', 'B'), { email: 'B@x.com', plan: 'chuNo' }), true);
 await t('hồ sơ: plan lạ bị chặn', setDoc(doc(B, 'users', 'B'), { email: 'B@x.com', plan: 'vip999' }), false);
 await t('hồ sơ: plan null (đăng ký cũ) vẫn được', setDoc(doc(B, 'users', 'B'), { email: 'B@x.com', plan: null }), true);
+await t('chủ sổ ghi inviteCodes vào sổ', updateDoc(doc(A, 'ledgers', 'L'), { inviteCodes: arrayUnion('CCCCCC') }), true);
+await t('C tự rời sổ', updateDoc(doc(C, 'ledgers', 'L'), { memberUids: arrayRemove('C'), 'links.C': deleteField(), 'linkNames.C': deleteField() }), true);
+await t('C đã rời không đọc được sổ', getDoc(doc(C, 'ledgers', 'L')), false);
+await t('B không gỡ được người khác', updateDoc(doc(B, 'ledgers', 'L'), { memberUids: arrayRemove('A'), 'links.A': deleteField(), 'linkNames.A': deleteField() }), false);
+await t('chủ sổ không "rời" sổ của mình', updateDoc(doc(A, 'ledgers', 'L'), { memberUids: arrayRemove('A'), 'links.A': deleteField(), 'linkNames.A': deleteField() }), false);
+await t('B rời sổ mà vẫn giữ links bị chặn', updateDoc(doc(B, 'ledgers', 'L'), { memberUids: arrayRemove('B') }), false);
+await t('chủ sổ xóa sổ + mã mời trong một batch', (() => { const b = writeBatch(A); b.delete(doc(A, 'invites', 'CCCCCC')); b.delete(doc(A, 'ledgers', 'L')); return b.commit(); })(), true);
+await t('đọc sổ đã xóa trả về "không tồn tại" chứ không lỗi quyền', getDoc(doc(B, 'ledgers', 'L')), true);
 console.log(`\n${pass} pass, ${fail} fail`);
 await env.cleanup();
 process.exit(fail ? 1 : 0);

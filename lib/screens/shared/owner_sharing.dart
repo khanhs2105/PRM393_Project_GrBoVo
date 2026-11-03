@@ -207,10 +207,14 @@ Future<void> sendReminder(
   );
   if (message == null) return;
   try {
-    await service.remind(
+    final sent = await service.remind(
         ledger: ledger, toUid: toUid, amount: amount, message: message);
     if (context.mounted) {
-      showSnack(context, 'Đã gửi nhắc nợ tới ${debtor.name}');
+      showSnack(
+          context,
+          sent
+              ? 'Đã gửi nhắc nợ tới ${debtor.name}'
+              : 'Đang mất mạng: lời nhắc sẽ tự gửi khi có mạng, không cần gửi lại.');
     }
   } catch (e) {
     if (context.mounted) showSnack(context, 'Không gửi được: ${friendlyError(e)}');

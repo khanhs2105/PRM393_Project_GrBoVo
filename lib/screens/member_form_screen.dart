@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../data/group_repository.dart';
 import '../logic/emv_qr_parser.dart';
 import '../logic/vietqr.dart';
 import '../models/activity.dart';
@@ -58,7 +59,20 @@ class _MemberFormScreenState extends State<MemberFormScreen> {
             : 'Đã điền ${bank.shortName} · ${qr.accountNo}');
   }
 
+  /// Đang lưu: chặn bấm "Lưu" lần hai tạo bản ghi trùng (và pop 2 lần).
+  bool _saving = false;
+
   Future<void> _save() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await _doSave();
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _doSave() async {
     if (!_formKey.currentState!.validate()) return;
     final hasAccount = _accountNo.text.trim().isNotEmpty;
     if (hasAccount && _bin == null) {
@@ -133,7 +147,8 @@ class _MemberFormScreenState extends State<MemberFormScreen> {
       if (mounted) Navigator.pop(context, true);
     } else {
       showSnack(context,
-          'Không xóa được: người này đã có trong khoản chi hoặc lần trả tiền.');
+          'Không xóa được: người này đã có trong khoản chi hoặc lần trả tiền, '
+          'hoặc nhóm chỉ còn $minGroupMembers người.');
     }
   }
 
@@ -222,7 +237,7 @@ class _MemberFormScreenState extends State<MemberFormScreen> {
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: FilledButton(onPressed: _save, child: const Text('Lưu')),
+          child: FilledButton(onPressed: _saving ? null : _save, child: const Text('Lưu')),
         ),
       ),
     );
