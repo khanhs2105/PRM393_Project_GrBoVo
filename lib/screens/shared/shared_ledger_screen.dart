@@ -10,6 +10,7 @@ import '../../theme.dart';
 import '../../widgets/app_icons.dart';
 import '../../widgets/common.dart';
 import '../../widgets/ui.dart';
+import '../group_detail_screen.dart' show findBankName;
 import '../../services/friendly_error.dart';
 
 /// Nhập mã mời để vào sổ chung của người khác. Vào được thì mở sổ luôn.
@@ -252,6 +253,10 @@ class _LedgerView extends StatelessWidget {
     final myBalance = d.balances[me] ?? 0;
     final iOwe = [for (final t in d.transfers) if (t.fromId == me) t];
     final owedToMe = [for (final t in d.transfers) if (t.toId == me) t];
+    final oweOwner = [
+      for (final t in iOwe)
+        if (t.toId == ledger.ownerMemberId) t.amount
+    ].fold(0, (a, b) => a + b);
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     return Scaffold(
       appBar: AppBar(title: Text(ledger.name), actions: [
@@ -271,7 +276,25 @@ class _LedgerView extends StatelessWidget {
               'Chỉ chủ sổ (${ledger.ownerName}) thêm khoản chi và ghi nhận '
               'trả tiền. Chuyển khoản xong thì báo chủ sổ để gạch nợ nhé.',
               style: TextStyle(color: muted, fontSize: 12)),
-          _NoticesSection(ledgerId: ledger.id),
+          if (!ledger.isOwner(myUid))
+            _OwnerQrCard(
+              ledgerName: ledger.name,
+              ownerName: ledger.ownerName,
+              owner: d.memberById(ledger.ownerMemberId),
+              ownerUid: ledger.ownerUid,
+              me: d.memberById(me),
+              amount: oweOwner,
+            ),
+          _NoticesSection(
+            ledgerId: ledger.id,
+            onPay: ledger.isOwner(myUid)
+                ? null
+                : () => showPayQr(context,
+                      ledgerName: ledger.name,
+                      me: d.memberById(me),
+                      to: d.memberById(ledger.ownerMemberId),
+                      amount: oweOwner),
+          ),
           SectionHeader('Bạn cần trả',
               trailing: Text('${iOwe.length} lượt',
                   style: TextStyle(color: muted, fontSize: 12))),
@@ -411,6 +434,136 @@ class _Header extends StatelessWidget {
   }
 }
 
+/// Link ảnh VietQR để [me] chuyển [amount] cho [to]. amount = 0 thì QR không
+/// kèm số tiền, người trả tự nhập.
+String _payQrUrl(String ledgerName, Member? me, Member to, int amount) =>
+    vietQrImageUrl(
+      bin: to.bankBin!,
+      accountNo: to.accountNo!,
+      amount: amount,
+      note: suggestedNote(me?.name ?? '', to.name, ledgerName),
+      accountName: to.accountName,
+    );
+
+/// Hộp thoại mã QR chuyển khoản cho [to]. [to] chưa có tài khoản ngân hàng
+/// thì báo để nhắc họ thêm.
+void showPayQr(BuildContext context,
+    {required String ledgerName,
+    required Member? me,
+    required Member? to,
+    required int amount}) {
+  if (to == null || !to.hasBank) {
+    showSnack(
+        context,
+        '${to?.name ?? 'Chủ sổ'} chưa thêm tài khoản ngân hàng nên chưa có '
+        'mã QR. Nhắn họ thêm trong mục Thành viên nhé.');
+    return;
+  }
+  showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(amount > 0
+          ? 'Trả ${to.name} ${formatVnd(amount)}'
+          : 'Mã QR của ${to.name}'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        Image.network(_payQrUrl(ledgerName, me, to, amount),
+            height: 300,
+            errorBuilder: (_, _, _) =>
+                const Text('Không tải được mã QR, kiểm tra mạng.')),
+        const SizedBox(height: 8),
+        Text('${to.accountNo} · ${to.accountName ?? ''}',
+            textAlign: TextAlign.center),
+      ]),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(ctx), child: const Text('Đóng')),
+      ],
+    ),
+  );
+}
+
+/// Mã QR nhận tiền của chủ sổ (người mời), luôn hiện cho người được mời.
+/// Đang nợ chủ sổ thì QR kèm sẵn số tiền.
+class _OwnerQrCard extends StatelessWidget {
+  final String ledgerName;
+  final String ownerName;
+  final Member? owner;
+  final String ownerUid;
+  final Member? me;
+  final int amount;
+  const _OwnerQrCard(
+      {required this.ledgerName,
+      required this.ownerName,
+      required this.owner,
+      required this.ownerUid,
+      required this.me,
+      required this.amount});
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final o = owner;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      SectionHeader('Mã QR của chủ sổ'),
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: o == null || !o.hasBank
+              ? Row(children: [
+                  MemberAvatar(ownerName, radius: 20, uid: ownerUid),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                        '$ownerName chưa thêm tài khoản ngân hàng nên chưa có '
+                        'mã QR. Nhắn chủ sổ thêm trong mục Thành viên nhé.',
+                        style: TextStyle(color: muted, fontSize: 13)),
+                  ),
+                ])
+              : Column(children: [
+                  Text(
+                      amount > 0
+                          ? 'Quét để trả $ownerName ${formatVnd(amount)}'
+                          : 'Bạn đang không nợ $ownerName. Cần chuyển tiền '
+                              'thì quét mã và tự nhập số tiền.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: amount > 0 ? AppTheme.owe : muted)),
+                  const SizedBox(height: 8),
+                  GestureDetector(
+                    onTap: () => showPayQr(context,
+                        ledgerName: ledgerName,
+                        me: me,
+                        to: o,
+                        amount: amount),
+                    child: Image.network(
+                      _payQrUrl(ledgerName, me, o, amount),
+                      height: 260,
+                      loadingBuilder: (_, child, progress) => progress == null
+                          ? child
+                          : const SizedBox(
+                              height: 260,
+                              child:
+                                  Center(child: CircularProgressIndicator())),
+                      errorBuilder: (_, _, _) => const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text('Không tải được mã QR, kiểm tra mạng.'),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                      '${findBankName(o.bankBin)} · ${o.accountNo}'
+                      '${(o.accountName ?? '').isEmpty ? '' : ' · ${o.accountName}'}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: muted, fontSize: 12)),
+                ]),
+        ),
+      ),
+    ]);
+  }
+}
+
 /// Một khoản mình cần trả, bấm "Mã QR" để chuyển khoản ngay.
 class _PayCard extends StatelessWidget {
   final String ledgerName;
@@ -424,36 +577,6 @@ class _PayCard extends StatelessWidget {
       required this.to,
       this.toUid,
       required this.amount});
-
-  void _showQr(BuildContext context) {
-    final m = to!;
-    final url = vietQrImageUrl(
-      bin: m.bankBin!,
-      accountNo: m.accountNo!,
-      amount: amount,
-      note: suggestedNote(me?.name ?? '', m.name, ledgerName),
-      accountName: m.accountName,
-    );
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Trả ${m.name} ${formatVnd(amount)}'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          Image.network(url,
-              height: 300,
-              errorBuilder: (_, _, _) =>
-                  const Text('Không tải được mã QR, kiểm tra mạng.')),
-          const SizedBox(height: 8),
-          Text('${m.accountNo} · ${m.accountName ?? ''}',
-              textAlign: TextAlign.center),
-        ]),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Đóng')),
-        ],
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -484,9 +607,16 @@ class _PayCard extends StatelessWidget {
                             color: AppTheme.owe)),
                   ]),
             ),
+            if (!canQr)
+              Text('Chưa có\nTK nhận',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant)),
             if (canQr)
               FilledButton.icon(
-                onPressed: () => _showQr(context),
+                onPressed: () => showPayQr(context,
+                    ledgerName: ledgerName, me: me, to: to, amount: amount),
                 icon: const Icon(AppIcons.qrCode, size: 18),
                 label: const Text('Mã QR'),
               ),
@@ -500,7 +630,10 @@ class _PayCard extends StatelessWidget {
 /// Lời nhắc chủ sổ đã gửi cho mình trong sổ này.
 class _NoticesSection extends StatefulWidget {
   final String ledgerId;
-  const _NoticesSection({required this.ledgerId});
+
+  /// Bấm vào lời nhắc thì mở mã QR của chủ sổ. null với chủ sổ.
+  final VoidCallback? onPay;
+  const _NoticesSection({required this.ledgerId, this.onPay});
 
   @override
   State<_NoticesSection> createState() => _NoticesSectionState();
@@ -533,6 +666,10 @@ class _NoticesSectionState extends State<_NoticesSection> {
                               ? n.fromName
                               : '${n.fromName} · ${formatDateTime(n.createdAt!)}',
                           style: TextStyle(fontSize: 12, color: muted)),
+                      trailing: widget.onPay == null
+                          ? null
+                          : const Icon(AppIcons.qrCode),
+                      onTap: widget.onPay,
                     ),
                 ]),
               ),
